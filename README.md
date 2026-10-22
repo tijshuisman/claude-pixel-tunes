@@ -1,12 +1,12 @@
 # Pixel Tunes
 
-A [Claude Code mod](https://code.claude.com/docs/en/plugins/mods/overview) that puts a pixel-art Spotify player in a pane next to your chat. The scene on top changes with the music that is playing.
+A [Claude Code mod](https://code.claude.com/docs/en/plugins/mods/overview) that puts a pixel-art Spotify player in a pane next to your chat. The scene on top changes with the music.
 
 <p align="center"><img src="docs/pane.gif" width="281" alt="The Pixel Tunes pane: a pixel-art night drive over Positif by Mr. Oizo, with its cover, the progress, the controls and the queue"></p>
 
 ## Scenes
 
-Pixel Tunes has six scenes, one per family of music. Each one moves only while music plays (the stars always twinkle).
+Pixel Tunes has six scenes, one for each kind of music. A scene only moves while music plays.
 
 <table>
   <tr>
@@ -35,40 +35,42 @@ Pixel Tunes has six scenes, one per family of music. Each one moves only while m
   </tr>
 </table>
 
-Spotify no longer tells apps the genre of what plays, so Pixel Tunes picks the scene itself. The first rule that gives an answer wins:
+Pixel Tunes picks the scene in this order:
 
-1. **Your own pick.** The *Scene* button in the pane picks a scene until you go back to *Automatic*.
-2. **A playlist you remembered.** After a pick, *Remember for this playlist* keeps it for the playlist that is playing.
-3. **An artist you remembered.** *Remember for this artist* does the same for the artist. A guest on a track counts too.
+1. **Your own pick.** Choose a scene with the *Scene* button in the pane. It stays until you choose *Automatic* again.
+2. **A playlist you remembered.** After picking a scene, choose *Remember for this playlist*.
+3. **An artist you remembered.** *Remember for this artist* does the same for an artist, also when they are a guest on a track.
 4. **Words in the playlist's name.** *Indie Folk Evenings* gets Campfire, *Late Night Synthwave* gets Night Drive, *Lo-fi for coding* gets Dream Pop.
-5. **The artist's genres on MusicBrainz**, only if you turn on `genre_lookup` (off by default). Of the artist's four most-voted genres, the first match in the order Night Drive, Dance Floor, Dream Pop, Campfire, Psychedelic, City Lights wins. Folk comes before psych and rock, so a folk band with a few psych tags still gets the campfire.
+5. **The artist's genres on MusicBrainz**, if you turn on `genre_lookup`.
 6. **Otherwise:** Night Drive.
 
 ## What it does
 
 - Shows what is playing: album art, title, artist, progress and an animated scene.
 - Controls Spotify: play and pause, previous and next, shuffle, repeat, like, volume, and a choice of device.
-- Finds music without the Spotify app: search for tracks, albums, playlists and artists, browse your playlists and recently played, and add to the queue.
-- Lets Claude be your DJ. Ask Claude to put something on ("play Nightcall by Kavinsky", "put on something for a late-night coding session") and it uses the `play_music` tool. Claude only hears a fixed status line, such as whether playback started, never titles or other Spotify data.
+- Finds music without switching to the Spotify app: search for tracks, albums, playlists and artists, browse your playlists and recently played, and add to the queue.
+- Lets Claude be your DJ: ask it to put something on, like "play Nightcall by Kavinsky" or "put on something for a late-night coding session".
 - Shows what plays in Claude's spinner: *Thinking · ♪ Nightcall – Kavinsky…*
 - Has a demo mode, so you can look around before you connect Spotify.
 
-The sound itself comes from a Spotify Connect device, such as the Spotify app on your Mac, your phone or a speaker: Pixel Tunes is the remote control and the screen.
+Pixel Tunes doesn't play the sound itself. The music plays on a Spotify Connect device, such as the Spotify app on your Mac or phone, or a speaker.
 
 ## Requirements
 
-- Claude Code with mods. The pixel-art pane draws in the desktop app's Code tab; a terminal session gets a short text version.
-- macOS. Pixel Tunes keeps your login in the Keychain and uses `open`, `curl` and `python3` (from the Xcode Command Line Tools) to log in.
-- Spotify Premium. Spotify needs it to control playback, and to own an app in Development Mode.
+- Claude Code with mods. The pixel-art pane shows in the desktop app's Code tab; in a terminal you get a short text version.
+- macOS with the Xcode Command Line Tools.
+- Spotify Premium.
 - A Spotify app of your own, for its Client ID. See below.
 
 ## Spotify setup
 
 1. Go to the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) and log in.
-2. Click **Create app**. Fill in any name and description. As **Redirect URI**, add exactly `http://127.0.0.1:8898/callback` (Spotify does not accept `localhost`). Under the APIs used, tick **Web API**. Accept the terms and save.
-3. Open the app's settings and copy its **Client ID**. You do not need the client secret: Pixel Tunes logs in with PKCE.
+2. Click **Create app** and fill in any name and description.
+3. As **Redirect URI**, add exactly `http://127.0.0.1:8898/callback`.
+4. Under the APIs used, tick **Web API**. Accept the terms and save.
+5. Open the app's settings and copy its **Client ID**. You don't need the client secret.
 
-In Development Mode, an app works for at most five Spotify users. To share yours with someone, add them under **User Management**.
+To let someone else use your app, add them under **User Management**. An app works for at most five Spotify users.
 
 ## Install
 
@@ -78,17 +80,17 @@ At the prompt of a terminal session:
 /plugin install pixel-tunes --marketplace tijshuisman/claude-pixel-tunes
 ```
 
-Answer `y` to add the marketplace, choose a scope, and fill in your Client ID when you are asked for the options.
+Answer `y` to add the marketplace, choose a scope, and fill in your Client ID when asked.
 
-From a shell:
+From a shell, with your Client ID in place of `YOUR_CLIENT_ID`:
 
 ```
-claude plugin install pixel-tunes --marketplace tijshuisman/claude-pixel-tunes
+claude plugin install pixel-tunes --marketplace tijshuisman/claude-pixel-tunes --config spotify_client_id=YOUR_CLIENT_ID
 ```
 
-In the desktop app, where `/plugin` does not run: click **+** next to the prompt box, then **Plugins**, **Add marketplace** with `tijshuisman/claude-pixel-tunes`, then **Add plugin**.
+In the desktop app: click **+** next to the prompt box, then **Plugins**, **Add marketplace** with `tijshuisman/claude-pixel-tunes`, then **Add plugin**.
 
-Then run `/tunes` to open the pane, and click **Connect Spotify**. Your browser opens Spotify's login; after you agree, the pane connects. If that page cannot reach Pixel Tunes, paste the address you land on into the pane.
+Then run `/tunes` to open the pane and click **Connect Spotify**. Your browser opens Spotify's login; after you agree, the pane connects. If it doesn't, paste the address from your browser's address bar into the pane.
 
 ## Update
 
@@ -111,12 +113,12 @@ The new version loads in your next session, in the terminal and in the desktop a
 | `/tunes` | Open the pane |
 | `/tunes play`, `/tunes pause` | Play or pause |
 | `/tunes next`, `/tunes prev` | Next or previous track |
-| `/tunes login`, `/tunes logout` | Connect to Spotify, or disconnect and remove the login from the Keychain |
-| `/tunes debug` | Show how fetching the album art and the genre lookup went |
+| `/tunes login`, `/tunes logout` | Log in to Spotify, or log out |
+| `/tunes debug` | Troubleshoot the album art and the genre lookup |
 
 ## Options
 
-You set them when you install, and change them later in the config menu (`/config` in a terminal session).
+You set them when you install. To change them later, run `/config` in a terminal session.
 
 | Option | Default | |
 |---|---|---|
@@ -126,10 +128,10 @@ You set them when you install, and change them later in the config menu (`/confi
 
 ## Privacy
 
-- Your Spotify login stays on your Mac. The refresh token is in the macOS Keychain (service `claude-pixel-tunes`); the access token only lives in memory.
-- Your remembered scenes are stored by Claude Code on your Mac.
-- Titles, artists and album art never go to the model. `play_music` only answers whether playback started, and `/tunes debug` leaves them out too.
-- With `genre_lookup` on, the Spotify ID of the playing artist goes to [musicbrainz.org](https://musicbrainz.org), or the ISRC code of the track when MusicBrainz doesn't know that ID, until MusicBrainz has told Pixel Tunes the artist's genres; at most one request a second. With it off (the default), Pixel Tunes talks to Spotify only.
+- Your Spotify login stays on your Mac, in the Keychain. `/tunes logout` removes it.
+- Your remembered scenes stay on your Mac too.
+- Claude never sees titles, artists or album art. When it plays something for you, it only hears whether playback started.
+- With `genre_lookup` on, Pixel Tunes sends the playing artist's Spotify ID to [musicbrainz.org](https://musicbrainz.org), or the track's ISRC code if MusicBrainz doesn't know that ID. Otherwise it only talks to Spotify.
 
 ## Development
 
