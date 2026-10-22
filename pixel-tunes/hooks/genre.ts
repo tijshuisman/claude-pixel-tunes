@@ -164,7 +164,9 @@ async function ask($: EngineInterface, path: string): Promise<unknown> {
     const wait = nextAt - (await $.clock.now())
     if (wait > 0) await $.clock.sleep(wait)
     nextAt = (await $.clock.now()) + GAP_MS
-    const res = await $.http.fetch(`${MUSICBRAINZ}${path}`, { headers: { 'User-Agent': AGENT, Accept: 'application/json' } })
+    const res = await $.http.fetch(`${MUSICBRAINZ}${path}`, { headers: { 'User-Agent': AGENT, Accept: 'application/json' } }).catch((error: unknown) => {
+      throw new Error(`musicbrainz.org cannot be reached (${scrub(error)})`)
+    })
     if (res.status === 404) return null
     if (res.status === 503 || res.status === 429) {
       nextAt += 2_000 * 2 ** attempt
@@ -176,33 +178,53 @@ async function ask($: EngineInterface, path: string): Promise<unknown> {
   throw new Error('MusicBrainz is too busy')
 }
 
+/** An error's words without addresses or ISRCs: they go to `/tunes debug`, which the model reads, and must not name the track. */
+function scrub(error: unknown): string {
+  const words = error instanceof Error ? error.message : String(error)
+  return words
+    .replace(/\S+:\/\/\S+/g, 'an address')
+    .replace(/\b[A-Z]{2}[A-Z0-9]{3}\d{7}\b/gi, 'an ISRC')
+    .slice(0, 160)
+}
+
 type Credit = { name?: string; artist?: { id?: string; name?: string } }
 type Genre = { name?: string; count?: number }
 
 /**
+ * What a lookup came to: `found` once the artist's genres were read, now or
+ * before, with the family they fit (null when none does); `no-isrc` when
+ * Spotify gave the track none; `unknown` when MusicBrainz does not know it.
+ */
+export type Lookup = { kind: 'found'; theme: ThemeId | null } | { kind: 'no-isrc' } | { kind: 'unknown' }
+
+/**
  * Looks up the family of a track's artist at MusicBrainz, through the
  * track's ISRC, never its name (a band named after a common word can turn
- * out to be a composer), and keeps the answer in the store, so each artist
- * is asked about once.
+ * out to be a composer), and keeps what the artist's genres fit in the
+ * store, so each artist is asked about once. A recording MusicBrainz does
+ * not know says nothing of its artist: then nothing is kept. Rejects when
+ * MusicBrainz cannot be reached.
  */
-export async function lookUpGenre($: EngineInterface, track: Track): Promise<void> {
+export async function lookUpGenre($: EngineInterface, track: Track): Promise<Lookup> {
   const isrc = track.isrc?.toUpperCase() ?? ''
   const keys = artistsOf(track).map(nameKey)
-  if (!/^[A-Z]{2}[A-Z0-9]{3}\d{7}$/.test(isrc) || keys.length === 0) return
+  if (!/^[A-Z]{2}[A-Z0-9]{3}\d{7}$/.test(isrc)) return { kind: 'no-isrc' }
+  if (keys.length === 0) return { kind: 'unknown' }
   const cache = await genreCache($)
-  if (keys.some(key => key in cache)) return
+  const known = keys.find(key => key in cache)
+  if (known !== undefined) return { kind: 'found', theme: cache[known] ?? null }
 
   const found = (await musicbrainz($, `/isrc/${isrc}?inc=artist-credits&fmt=json`)) as { recordings?: { 'artist-credit'?: Credit[] }[] } | null
   const credits = (found?.recordings ?? []).flatMap(r => r['artist-credit'] ?? [])
   const credit = credits.find(c => keys.includes(nameKey(c.artist?.name ?? c.name ?? ''))) ?? credits[0]
+  const id = credit?.artist?.id ?? ''
+  if (!/^[0-9a-f-]{36}$/.test(id)) return { kind: 'unknown' }
+  const artist = (await musicbrainz($, `/artist/${id}?inc=genres+tags&fmt=json`)) as { genres?: Genre[]; tags?: Genre[] } | null
+  if (!artist) return { kind: 'unknown' }
+  const listed = artist.genres?.length ? artist.genres : (artist.tags ?? [])
+  const theme = themeOfGenres(listed.flatMap(g => (typeof g.name === 'string' ? [{ name: g.name, count: g.count ?? 0 }] : [])))
   const creditKey = nameKey(credit?.artist?.name ?? credit?.name ?? '')
   const key = keys.includes(creditKey) ? creditKey : (keys[0] ?? creditKey)
-  let theme: ThemeId | null = null
-  const id = credit?.artist?.id ?? ''
-  if (/^[0-9a-f-]{36}$/.test(id)) {
-    const artist = (await musicbrainz($, `/artist/${id}?inc=genres+tags&fmt=json`)) as { genres?: Genre[]; tags?: Genre[] } | null
-    const listed = artist?.genres?.length ? artist.genres : (artist?.tags ?? [])
-    theme = themeOfGenres(listed.flatMap(g => (typeof g.name === 'string' ? [{ name: g.name, count: g.count ?? 0 }] : [])))
-  }
   await $.store.set(GENRES, { ...(await genreCache($)), [key]: theme })
+  return { kind: 'found', theme }
 }

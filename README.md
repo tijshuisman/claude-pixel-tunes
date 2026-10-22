@@ -98,7 +98,7 @@ Then run `/tunes` to open the pane, and click **Connect Spotify**. Your browser 
 | `/tunes play`, `/tunes pause` | Play or pause |
 | `/tunes next`, `/tunes prev` | Next or previous track |
 | `/tunes login`, `/tunes logout` | Connect to Spotify, or disconnect and remove the login from the Keychain |
-| `/tunes debug` | Show how fetching the album art went |
+| `/tunes debug` | Show how fetching the album art and the genre lookup went |
 
 ## Options
 
@@ -115,7 +115,7 @@ You set them when you install, and change them later in the config menu (`/confi
 - Your Spotify login stays on your Mac. The refresh token is in the macOS Keychain (service `claude-pixel-tunes`); the access token only lives in memory.
 - Your remembered scenes are stored by Claude Code on your Mac.
 - Titles, artists and album art never go to the model. `play_music` only answers whether playback started, and `/tunes debug` leaves them out too.
-- With `genre_lookup` on, the ISRC code of the playing track goes to [musicbrainz.org](https://musicbrainz.org), once per artist, at most one request a second. With it off (the default), Pixel Tunes talks to Spotify only.
+- With `genre_lookup` on, the ISRC code of the playing track goes to [musicbrainz.org](https://musicbrainz.org) until MusicBrainz has told Pixel Tunes the artist's genres, at most one request a second. With it off (the default), Pixel Tunes talks to Spotify only.
 
 ## Development
 

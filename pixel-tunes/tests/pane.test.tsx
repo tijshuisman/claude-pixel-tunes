@@ -89,6 +89,8 @@ type MusicBrainz = {
   recordings: Record<string, { id: string; name: string }>
   /** Per artist id, its genres with their votes. */
   genres: Record<string, { name: string; count: number }[]>
+  /** Unreachable: every request is refused, its address (and so the ISRC) in the reason. */
+  isDown?: boolean
 }
 
 /** Spotify, the Keychain, the browser and the shell, in memory. */
@@ -144,6 +146,7 @@ function fakeSpotify(
     })
     const url = new URL(e.url)
     if (url.host === 'musicbrainz.org') {
+      if (start.musicbrainz?.isDown) return { deny: `refused: ${e.url}` }
       const [, , , kind, id] = url.pathname.split('/')
       const artist = kind === 'isrc' ? start.musicbrainz?.recordings[id ?? ''] : undefined
       if (artist) return answer(200, { isrc: id, recordings: [{ id: 'rec', 'artist-credit': [{ name: artist.name, artist }] }] })
@@ -348,6 +351,7 @@ test('a stored login resumes by itself and follows Spotify', async ($, on) => {
   expect(debug).toContain('Spotify: connected')
   expect(debug).toContain('Fetching: fetched from i.scdn.co')
   expect(debug).toContain('In the pane: this cover')
+  expect(debug).toContain('Genre lookup: off')
   // The model reads this too: the server, but no title, artist, album or image address.
   expect(debug).toContain('Cover server: https://i.scdn.co')
   for (const spotifyData of ['Tech Noir', 'Gunship', 'OutRun', '/image/']) expect(debug).not.toContain(spotifyData)
@@ -873,11 +877,50 @@ test('with opt-in, Pixel Tunes looks up the genre by the ISRC, once per artist',
   expect(await shows()).toContain('Pixel-art campfire')
   await ui.press({ key: 'theme' })
   expect(await ui.find({ type: 'Text', text: 'Automatic: by the genre of Big Thief (MusicBrainz).' })).toBeDefined()
+  expect((await $.command.run({ command: 'tunes', args: 'debug' })).text).toContain(
+    "Genre lookup: on · last lookup: Campfire, by the artist's genres on MusicBrainz",
+  )
 
   // The next song of that artist needs no new question.
   spotify.play(song('bt2', 'Simulation Swarm', ['Big Thief'], 'USUM72200002'))
   await clock.advance(5_000)
   expect(spotify.musicbrainz()).toHaveLength(2)
+  expect(await shows()).toContain('Pixel-art campfire')
+  await ui.unmount()
+})
+
+test('a recording MusicBrainz does not know leaves its artist open for the next track', { options: { genre_lookup: true } }, async ($, on) => {
+  const { clock, spotify, ui, shows } = await connectedPane($, on, { current: song('bt0', 'Masterpiece', ['Big Thief'], 'USUM71600009'), musicbrainz: MUSICBRAINZ })
+  const debug = async () => (await $.command.run({ command: 'tunes', args: 'debug' })).text ?? ''
+  await clock.advance(5_000)
+  expect(await shows()).toContain('Pixel-art night drive')
+  expect(await debug()).toContain('Genre lookup: on · last lookup: MusicBrainz does not know the recording')
+
+  // MusicBrainz knows the artist's next track: now its genres choose.
+  spotify.play(song('bt', 'Not', ['Big Thief'], 'USUM71900001'))
+  await clock.advance(10_000)
+  expect(await shows()).toContain('Pixel-art campfire')
+  // The model reads /tunes debug: never the artist or the ISRC.
+  const said = await debug()
+  expect(said).toContain("last lookup: Campfire, by the artist's genres on MusicBrainz")
+  for (const spotifyData of ['Big Thief', 'USUM']) expect(said).not.toContain(spotifyData)
+  await ui.unmount()
+})
+
+test("when musicbrainz.org cannot be reached, the artist's next track asks again", { options: { genre_lookup: true } }, async ($, on) => {
+  const bigThief = { id: '7b2c1e6a-0e8f-4d1c-9a51-2f3e8c0d4b11', name: 'Big Thief' }
+  const musicbrainz = { ...MUSICBRAINZ, recordings: { USUM71900001: bigThief, USUM72200002: bigThief }, isDown: true }
+  const { clock, spotify, ui, shows } = await connectedPane($, on, { current: song('bt', 'Not', ['Big Thief'], 'USUM71900001'), musicbrainz })
+  await clock.advance(5_000)
+  expect(await shows()).toContain('Pixel-art night drive')
+  // What went wrong, without the address that holds the ISRC.
+  const said = (await $.command.run({ command: 'tunes', args: 'debug' })).text ?? ''
+  expect(said).toContain('Genre lookup: on · last lookup failed: musicbrainz.org cannot be reached')
+  expect(said).not.toContain('USUM')
+
+  musicbrainz.isDown = false
+  spotify.play(song('bt2', 'Simulation Swarm', ['Big Thief'], 'USUM72200002'))
+  await clock.advance(10_000)
   expect(await shows()).toContain('Pixel-art campfire')
   await ui.unmount()
 })

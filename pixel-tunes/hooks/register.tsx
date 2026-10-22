@@ -4,6 +4,7 @@ import type { EngineInterface, Register, Timer } from 'claude-code'
 import type { Browse, Item, Playback, RepeatMode, ThemeChoice, ThemeId, Track, View } from '../types'
 import { DEMO_QUEUE } from './demo'
 import { artistsOf, lookUpGenre, nameKey, remember, themeFor } from './genre'
+import type { Lookup } from './genre'
 import { BG, CYAN, LILAC, PINK } from './pixel'
 import { SIZE, coverArt, fmt, progress, scene, strip } from './render'
 import {
@@ -171,8 +172,10 @@ let progressDrawnAt = 0
 let genreLookup = false
 // Playlist names by URI, asked of Spotify once a session; null when it gives none.
 const playlistNames = new Map<string, string | null>()
-// The artists asked of MusicBrainz this session.
-const lookedUp = new Set<string>()
+// The recordings, by ISRC, asked of MusicBrainz this session; one that failed is taken out, to be asked again.
+const askedRecordings = new Set<string>()
+// What the last genre lookup came to (for `/tunes debug`), never naming the track or its artist.
+let genreNote = 'nothing looked up yet this session'
 
 /** Text cut to `max` characters, an ellipsis where it was cut. */
 function fit(text: string, max: number): string {
@@ -405,12 +408,34 @@ async function pickTheme($: EngineInterface): Promise<void> {
   }
 }
 
+/** Asks MusicBrainz about the track's artist, once a recording; when its genres fit a family, chooses again. */
 async function lookUpThenPick($: EngineInterface, track: Track): Promise<void> {
-  const key = artistsOf(track).map(nameKey).join('|')
-  if (!key || lookedUp.has(key)) return
-  lookedUp.add(key)
-  await lookUpGenre($, track)
-  if ((await read($, playback)).track?.id === track.id) await pickTheme($)
+  const isrc = track.isrc ?? ''
+  if (askedRecordings.has(isrc)) return
+  if (isrc) askedRecordings.add(isrc)
+  let found: Lookup
+  try {
+    found = await lookUpGenre($, track)
+  } catch (error) {
+    // Not given up on: the artist's next track asks again.
+    askedRecordings.delete(isrc)
+    genreNote = `last lookup failed: ${error instanceof Error ? error.message : 'unknown error'}; the artist's next track asks again`
+    return
+  }
+  genreNote = `last lookup: ${lookupNote(found)}`
+  if (found.kind === 'found' && found.theme !== null && (await read($, playback)).track?.id === track.id) await pickTheme($)
+}
+
+/** What a lookup came to, in words for `/tunes debug`: never the track or its artist. */
+function lookupNote(found: Lookup): string {
+  switch (found.kind) {
+    case 'found':
+      return found.theme === null ? "the artist's genres on MusicBrainz fit no scene" : `${THEMES[found.theme].name}, by the artist's genres on MusicBrainz`
+    case 'no-isrc':
+      return 'Spotify gave the track no ISRC'
+    case 'unknown':
+      return "MusicBrainz does not know the recording; the artist's next track asks again"
+  }
 }
 
 async function toggleThemes($: EngineInterface): Promise<void> {
@@ -858,6 +883,7 @@ export const register: Register = (on, options) => {
           `In the pane: ${shown}`,
           `Pane width: ${paneColumns || 'not drawn yet'} columns`,
           `Scene: ${THEMES[th.manual ?? th.auto].name}`,
+          `Genre lookup: ${genreLookup ? `on · ${genreNote}` : 'off (the genre_lookup option)'}`,
         ].join('\n'),
       }
     }
