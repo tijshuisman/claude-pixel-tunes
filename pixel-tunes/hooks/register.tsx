@@ -6,7 +6,7 @@ import { DEMO_QUEUE } from './demo'
 import { artistsOf, lookUpGenre, nameKey, remember, themeFor } from './genre'
 import type { Lookup } from './genre'
 import { BG, CYAN, LILAC, PINK } from './pixel'
-import { SIZE, bar, coverArt, fmt, pixelLabel, progress, scene, strip } from './render'
+import { SIZE, coverArt, fmt, pixelLabel, progress, scene, strip } from './render'
 import {
   SpotifyError,
   artworkDataUri,
@@ -67,8 +67,9 @@ const NO_BROWSING: Browse = { view: 'queue', query: '', search: [], playlists: [
 const browse = atom({ plugin: 'pixel-tunes', key: 'browse' } as const, NO_BROWSING)
 
 // About how many CSS pixels wide a column of the desktop's pane is: the pane gives
-// its width in columns only.
-const CELL_PX = 8
+// its width in columns only. Measured at 8.8 (38 columns, about 340 px); a little
+// under that, so the art is never drawn just too wide.
+const CELL_PX = 8.5
 
 /**
  * How much larger than its base size the art is drawn in a pane `columns` wide:
@@ -1208,16 +1209,7 @@ export const register: Register = (on, options) => {
           {isLive && (
             <Box flexDirection="row" flexWrap="wrap" gap={isNarrow ? 'xs' : 'sm'}>
               {VIEWS.map(([view, name]) => (
-                <Box flexDirection="column" gap="xs">
-                  {view === shown ? (
-                    <Button key={`tab-${view}`} plain onPress={() => quietly(openView($, view))}>
-                      <Text color={PINK}>{name}</Text>
-                    </Button>
-                  ) : (
-                    <Button key={`tab-${view}`} plain dimColor label={name} onPress={() => quietly(openView($, view))} />
-                  )}
-                  {view === shown && <Svg source={bar(name.length * 7)} alt="" width={name.length * 7} height={2} />}
-                </Box>
+                <Button key={`tab-${view}`} plain dimColor={view !== shown} label={name} onPress={() => quietly(openView($, view))} />
               ))}
             </Box>
           )}
