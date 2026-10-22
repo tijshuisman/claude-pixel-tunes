@@ -66,6 +66,21 @@ const theme = atom({ plugin: 'pixel-tunes', key: 'theme' } as const, NO_THEME)
 const NO_BROWSING: Browse = { view: 'queue', query: '', search: [], playlists: [], hasMorePlaylists: false, recent: [], loading: null, message: null }
 const browse = atom({ plugin: 'pixel-tunes', key: 'browse' } as const, NO_BROWSING)
 
+// About how many CSS pixels wide a column of the desktop's pane is: the pane gives
+// its width in columns only.
+const CELL_PX = 8
+
+/**
+ * How much larger than its base size the art is drawn in a pane `columns` wide:
+ * the scene's art pixels in steps of half a CSS pixel, from two, so on a retina
+ * screen each stays a whole number of screen pixels.
+ */
+function zoomFor(columns: number): number {
+  const room = columns * CELL_PX - 16
+  const perArtPixel = Math.floor((2 * room) / (SIZE.scene.width / 2)) / 2
+  return Math.min(6, Math.max(2, perArtPixel)) / 2
+}
+
 /** The pixel heading over each view. */
 const HEADINGS: Readonly<Record<View, string>> = { queue: 'UP NEXT', search: 'SEARCH', playlists: 'PLAYLISTS', recent: 'RECENT' }
 
@@ -93,7 +108,7 @@ const ICON = {
   next: '⏭︎',
   play: '▶︎',
   pause: '⏸︎',
-  shuffle: '⤮',
+  shuffle: '⇄',
   repeat: '↻',
   heart: '♥︎',
   noHeart: '♡',
@@ -1025,32 +1040,33 @@ export const register: Register = (on, options) => {
       </Box>
     )
 
+    // The art grows with the pane, and the pane is purple from top to bottom.
+    const zoom = zoomFor(paneColumns)
+    const sized = (size: { width: number; height: number }) => ({ width: Math.round(size.width * zoom), height: Math.round(size.height * zoom) })
+
     return (
-      <Box flexDirection="column" backgroundColor={BG} paddingBottom="sm">
+      <Box flexDirection="column" backgroundColor={BG} paddingBottom="sm" minHeight={e.props.scroll.bodyRows}>
         <Box flexDirection="column" alignItems="center">
           <Svg
             source={scene(shownTheme, p.isPlaying)}
             alt={THEMES[shownTheme].alt}
-            width={SIZE.scene.width}
-            height={SIZE.scene.height}
+            {...sized(SIZE.scene)}
             isInteractive
           />
           <Box flexDirection="row">
             <Svg
               source={coverArt(t, art)}
               alt={t ? `Cover of ${t.album || t.title}` : 'No cover'}
-              width={SIZE.cover.width}
-              height={SIZE.cover.height}
+              {...sized(SIZE.cover)}
             />
             <Svg
               source={strip(p, isLiked)}
               alt={t ? `Now playing ${t.title} by ${t.artist}` : 'Nothing is playing'}
-              width={SIZE.strip.width}
-              height={SIZE.strip.height}
+              {...sized(SIZE.strip)}
               isInteractive
             />
           </Box>
-          <Svg source={progress(atNow)} alt="Track progress" width={SIZE.progress.width} height={SIZE.progress.height} isInteractive />
+          <Svg source={progress(atNow)} alt="Track progress" {...sized(SIZE.progress)} isInteractive />
         </Box>
 
         <Box flexDirection="row" justifyContent="center" gap="xs" paddingY="sm">

@@ -326,6 +326,23 @@ test('the desktop gets the scene, the player and the buttons', CLIENT, async ($,
   await ui.unmount()
 })
 
+test('in a wider pane the art grows in whole retina pixels, and the pane is purple to the bottom', async ($, on) => {
+  mock.clock(on, { now: 0 })
+  engine(on)
+  fakeSpotify(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+
+  for (const [columns, width] of [[30, 232], [40, 290], [60, 464]] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface: 'desktop', props: { ...PANE.props, bodyColumns: columns } })
+    const [scene, cover, strip] = await ui.findAll({ type: 'Svg' })
+    expect(scene?.props.width).toBe(width)
+    // The cover and the strip together are as wide as the scene.
+    expect(Number(cover?.props.width) + Number(strip?.props.width)).toBe(width)
+    expect((await ui.find({ type: 'Box' }))?.props.minHeight).toBe(40)
+    await ui.unmount()
+  }
+})
+
 test('without a Client ID, the demo points the way to a Spotify app of your own', async ($, on) => {
   mock.clock(on, { now: 0 })
   engine(on)
