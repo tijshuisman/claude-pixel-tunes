@@ -1064,13 +1064,13 @@ export const register: Register = (on, options) => {
         {isTerminal || !Svg ? (
           <Box flexDirection="column" paddingX="sm">
             {Image ? (
-              // A sharp picture, about a quarter of the blocks' size: a terminal cell is
-              // about twice as tall as it is wide, so the scene's 116 × 64 fits 58 × 16.
+              // A sharp picture as wide as the pane: a terminal cell is about twice as tall
+              // as it is wide, so the scene's 116 × 64 takes a row for every 3.6 columns.
               <Image
                 key="scene"
                 source={sceneImage(shownTheme)}
-                columns={Math.min(58, paneColumns - 2)}
-                rows={Math.max(4, Math.round(Math.min(58, paneColumns - 2) / 3.625))}
+                columns={Math.max(8, Math.min(116, paneColumns - 2))}
+                rows={Math.max(3, Math.round(Math.max(8, Math.min(116, paneColumns - 2)) / 3.625))}
                 alt={THEMES[shownTheme].alt}
               />
             ) : (
@@ -1115,7 +1115,7 @@ export const register: Register = (on, options) => {
         </Box>
         )}
 
-        <Box flexDirection="row" justifyContent="center" paddingY="sm" {...(isNarrow ? {} : { gap: 'xs' as const })}>
+        <Box flexDirection="row" justifyContent={isTerminal ? 'flex-start' : 'center'} paddingX={isTerminal ? 'sm' : undefined} paddingY="sm" {...(isNarrow ? {} : { gap: 'xs' as const })}>
           <Button key="shuffle" {...key('s')} label={ICON.shuffle} dimColor={!p.shuffle} onPress={() => quietly(act($, 'shuffle'))} />
           <Button key="prev" {...key('b')} label={ICON.prev} onPress={() => quietly(act($, 'prev'))} />
           <Button key="play" {...key('p')} label={p.isPlaying ? ICON.pause : ICON.play} variant="primary" onPress={() => quietly(act($, 'toggle'))} />

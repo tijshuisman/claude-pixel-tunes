@@ -167,7 +167,7 @@ export function sceneCells(theme: ThemeId, columns: number): { columns: number; 
 const imageCache = new Map<ThemeId, string>()
 
 /** How many screen pixels an art pixel gets in the terminal's picture, so the terminal never has to blur it up. */
-export const IMAGE_SCALE = 4
+export const IMAGE_SCALE = 6
 
 /**
  * The paused scene as RGBA pixels for a terminal that draws pictures, each art

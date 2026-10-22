@@ -559,7 +559,7 @@ test('the terminal gets the scene in half blocks and a player of text', async ($
   await ui.unmount()
 })
 
-test('a terminal that draws pictures gets the scene as a sharp, small picture', { options: { terminal_images: true } }, async ($, on) => {
+test('a terminal that draws pictures gets the scene as a sharp picture as wide as the pane', { options: { terminal_images: true } }, async ($, on) => {
   mock.clock(on, { now: 0 })
   engine(on)
   fakeSpotify(on)
@@ -568,10 +568,11 @@ test('a terminal that draws pictures gets the scene as a sharp, small picture', 
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal', props: { ...PANE.props, bodyColumns: 80 } })
   expect(await ui.find({ type: 'Raster' })).toBeUndefined()
   const image = await ui.find({ type: 'Image' })
-  expect(image?.props.columns).toBe(58)
-  expect(image?.props.rows).toBe(16)
-  // Each art pixel four by four, so the terminal never blurs it up.
-  expect(image?.props.source).toMatchObject({ width: 464, height: 256 })
+  // As wide as the pane, a row for every 3.6 columns.
+  expect(image?.props.columns).toBe(78)
+  expect(image?.props.rows).toBe(22)
+  // Each art pixel six by six, so the terminal hardly has to blur it up.
+  expect(image?.props.source).toMatchObject({ width: 696, height: 384 })
   expect(await ui.find({ key: 'play' })).toBeDefined()
   await ui.unmount()
 })
