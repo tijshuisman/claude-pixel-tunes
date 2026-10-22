@@ -1040,12 +1040,12 @@ export const register: Register = (on, options) => {
       </Box>
     )
 
-    // The art grows with the pane, and the pane is purple from top to bottom.
+    // The art grows with the pane.
     const zoom = zoomFor(paneColumns)
     const sized = (size: { width: number; height: number }) => ({ width: Math.round(size.width * zoom), height: Math.round(size.height * zoom) })
 
     return (
-      <Box flexDirection="column" backgroundColor={BG} paddingBottom="sm" minHeight={e.props.scroll.bodyRows}>
+      <Box flexDirection="column" backgroundColor={BG} paddingBottom="sm">
         <Box flexDirection="column" alignItems="center">
           <Svg
             source={scene(shownTheme, p.isPlaying)}

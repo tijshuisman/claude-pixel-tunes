@@ -326,7 +326,7 @@ test('the desktop gets the scene, the player and the buttons', CLIENT, async ($,
   await ui.unmount()
 })
 
-test('in a wider pane the art grows in whole retina pixels, and the pane is purple to the bottom', async ($, on) => {
+test('in a wider pane the art grows in whole retina pixels', async ($, on) => {
   mock.clock(on, { now: 0 })
   engine(on)
   fakeSpotify(on)
@@ -338,7 +338,6 @@ test('in a wider pane the art grows in whole retina pixels, and the pane is purp
     expect(scene?.props.width).toBe(width)
     // The cover and the strip together are as wide as the scene.
     expect(Number(cover?.props.width) + Number(strip?.props.width)).toBe(width)
-    expect((await ui.find({ type: 'Box' }))?.props.minHeight).toBe(40)
     await ui.unmount()
   }
 })
