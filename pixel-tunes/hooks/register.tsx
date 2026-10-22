@@ -6,7 +6,7 @@ import { DEMO_QUEUE } from './demo'
 import { artistsOf, lookUpGenre, nameKey, remember, themeFor } from './genre'
 import type { Lookup } from './genre'
 import { BG, CYAN, LILAC, PINK } from './pixel'
-import { SIZE, coverArt, fmt, pixelLabel, progress, scene, strip } from './render'
+import { SIZE, bar, coverArt, fmt, pixelLabel, progress, scene, strip } from './render'
 import {
   SpotifyError,
   artworkDataUri,
@@ -1070,10 +1070,10 @@ export const register: Register = (on, options) => {
         <Box flexDirection="column" paddingX="sm" gap="sm">
           <Box flexDirection="column" gap="xs">
             <Box flexDirection="row" alignItems="center" gap="xs">
-              {heading('ON', '#7d68a8')}
+              {heading('ON', '#7d68a8', 2)}
               <Button key="device" plain label={`${p.device || 'Choose a device'} ▾`} onPress={() => quietly(togglePicker($))} />
               <Box flexGrow={1} />
-              {heading('VOL', '#7d68a8')}
+              {heading('VOL', '#7d68a8', 2)}
               <Button key="softer" label="−" plain onPress={() => quietly(act($, 'softer'))} />
               <Text color={CYAN} mono>
                 {'▮'.repeat(bars)}
@@ -1083,7 +1083,7 @@ export const register: Register = (on, options) => {
             </Box>
 
             <Box flexDirection="row" alignItems="center" gap="xs">
-              {heading('SCENE', '#7d68a8')}
+              {heading('SCENE', '#7d68a8', 2)}
               <Button key="theme" plain label={`${THEMES[shownTheme].name} ▾`} onPress={() => quietly(toggleThemes($))} />
             </Box>
           </Box>
@@ -1183,14 +1183,18 @@ export const register: Register = (on, options) => {
             </Box>
           )}
 
-          <Box height={1} backgroundColor="#2a1452" />
-
           {isLive && (
             <Box flexDirection="row" flexWrap="wrap" gap="sm">
               {VIEWS.map(([view, name]) => (
                 <Box flexDirection="column" gap="xs">
-                  <Button key={`tab-${view}`} plain dimColor={view !== shown} label={name} onPress={() => quietly(openView($, view))} />
-                  <Box height={2} backgroundColor={view === shown ? PINK : BG} />
+                  {view === shown ? (
+                    <Button key={`tab-${view}`} plain onPress={() => quietly(openView($, view))}>
+                      <Text color={PINK}>{name}</Text>
+                    </Button>
+                  ) : (
+                    <Button key={`tab-${view}`} plain dimColor label={name} onPress={() => quietly(openView($, view))} />
+                  )}
+                  {view === shown && <Svg source={bar(name.length * 7)} alt="" width={name.length * 7} height={2} />}
                 </Box>
               ))}
             </Box>
@@ -1207,7 +1211,7 @@ export const register: Register = (on, options) => {
               )}
               {upNext.map((track, k) => (
                 <Box flexDirection="row" alignItems="center" gap="sm">
-                  {heading(String(k + 1).padStart(2, '0'), PINK)}
+                  {heading(String(k + 1).padStart(2, '0'), PINK, 2)}
                   <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
                     <Button key={`q-${k}-${track.id}`} plain onPress={() => quietly(act($, { play: track.id }))}>
                       {fit(track.title, room - 8)}

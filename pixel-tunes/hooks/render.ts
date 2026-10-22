@@ -78,6 +78,9 @@ export function pixelLabel(text: string, color: string, p = 1): { source: string
   return { source: `${open(width, height)}<path fill="${color}" d="${glyphs(text, 0, 0, p)}"/></svg>`, width, height }
 }
 
+/** A pink bar two pixels high, `width` wide: the mark under the active tab. */
+export const bar = (width: number) => `${open(width, 2)}<path fill="${PINK}" d="${rect(0, 0, width, 2)}"/></svg>`
+
 export function fmt(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000))
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
