@@ -1,7 +1,7 @@
 {
   "name": "pixel-tunes",
   "displayName": "Pixel Tunes",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "A pixel-art Spotify player in a pane next to your chat, with a scene that fits the music",
   "author": {
     "name": "Tijs Huisman",
@@ -40,7 +40,7 @@
     "terminal_images": {
       "type": "boolean",
       "title": "Draw the scene as a picture in the terminal",
-      "description": "For a terminal that draws pictures: iTerm2 3.5 or later, kitty or Ghostty. The scene is then sharp and small; elsewhere it is drawn in coloured blocks.",
+      "description": "For a terminal that draws pictures: iTerm2 3.5 or later, kitty or Ghostty. The scene is then sharp; elsewhere it is drawn in coloured blocks.",
       "default": false
     }
   }
