@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register, Timer } from 'claude-code'
+import type { EngineInterface, Register, Timer, UiOpenResult } from 'claude-code'
 
 import type { Browse, Item, Playback, RepeatMode, ThemeChoice, ThemeId, Track, View } from '../types'
 import { DEMO_QUEUE } from './demo'
@@ -800,9 +800,19 @@ function refusal(error: unknown): string {
   return error.status === 429 ? ANSWER.busy : ANSWER.failed
 }
 
+/** Opens the pane: from /tunes, from the band's button, or for play_music. */
+async function openPane($: EngineInterface): Promise<UiOpenResult> {
+  const opened = await $.ui.open({ id: PANE, title: 'Pixel Tunes' })
+  // The band's button is there only while the pane is closed.
+  $.ui.invalidate('ui.render')
+  // Closed, the pane looked once a minute: look now, and every few seconds from here.
+  if (await isConnected($)) schedulePoll($, 0)
+  return opened
+}
+
 /** Opens the pane, where the person connects or picks a device; resolves to `line`. */
 async function toPane($: EngineInterface, line: string): Promise<string> {
-  await $.ui.open({ id: PANE, title: 'Pixel Tunes' }).catch(() => undefined)
+  await openPane($).catch(() => undefined)
   return line
 }
 
@@ -903,9 +913,7 @@ export const register: Register = (on, options) => {
       if ((await isConnected($)) || track?.uri) return { text: action === 'next' || action === 'prev' ? '♪ Track changed.' : '♪ Done.' }
       return { text: track ? `♪ ${track.title} – ${track.artist}` : 'Nothing is playing.' }
     }
-    const opened = await $.ui.open({ id: PANE, title: 'Pixel Tunes' })
-    // Closed, the pane looked once a minute: look now, and every few seconds from here.
-    if (await isConnected($)) schedulePoll($, 0)
+    const opened = await openPane($)
     return { text: opened.isPlaced ? 'Pixel Tunes is open next to the chat.' : `Pixel Tunes is open, but waiting for room: ${opened.reason}` }
   })
 
@@ -919,6 +927,27 @@ export const register: Register = (on, options) => {
     const { isPlaying, track } = await read($, playback)
     if (!isPlaying || track === null || !(await isConnected($))) return next(e)
     return next({ ...e, props: { ...e.props, suffix: ` · ♪ ${track.title} – ${track.artist}…` } })
+  })
+
+  // While the pane is closed, the band above the prompt has a button that opens it: the
+  // desktop app holds back a /tunes typed while Claude works, as it does any message.
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (e.surface !== 'desktop' || e.props.hasSurvey) return next(e)
+    if ((await $.ui.panes()).some(x => x.id === PANE && x.isPlaced)) return next(e)
+    const { Box, Button } = $.ui.resolve(e)
+    return (
+      <Box flexDirection="row" alignItems="center" gap="xs">
+        <Button key="open" label="♪ Pixel Tunes" onPress={() => quietly(openPane($))} />
+        {await next(e)}
+      </Box>
+    )
+  })
+
+  // A pane the person closes brings the band's button back.
+  on('ui.close', { id: PANE }, async ($, e, next) => {
+    const closed = await next(e)
+    $.ui.invalidate('ui.render')
+    return closed
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {

@@ -116,6 +116,8 @@ The new version loads in your next session, in the terminal and in the desktop a
 | `/tunes login`, `/tunes logout` | Log in to Spotify, or log out |
 | `/tunes debug` | Troubleshoot the album art and the genre lookup |
 
+In the desktop app, you can also open the pane with the **♪ Pixel Tunes** button above the prompt.
+
 ## Options
 
 You set them when you install. To change them later, run `/config` in a terminal session.

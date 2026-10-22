@@ -26,6 +26,13 @@ const SPINNER = {
   props: { word: 'Thinking', message: null, suffix: '…', mode: 'thinking' },
 } as const
 
+// The band above the prompt, while Claude works.
+const BAND = {
+  plugin: 'pixel-tunes',
+  component: 'AbovePrompt',
+  props: { hasSurvey: false, isWorking: true, maxRows: 10, bodyColumns: 80, scroll: { offset: 0, bodyRows: 9 }, view: {} },
+} as const
+
 const PLAY_MUSIC = 'mcp__pixel-tunes__play_music'
 
 // A Spotify Client ID, as the person sets it; without one there is only the demo.
@@ -34,10 +41,17 @@ const CLIENT = { options: { spotify_client_id: 'test-client' } }
 // Nothing sits beneath the plugin: these hooks stand for the engine.
 function engine(
   on: On,
-  { takesTools = true, store = {}, isFocused = () => false }: { takesTools?: boolean; store?: Record<string, unknown>; isFocused?: () => boolean } = {},
+  {
+    takesTools = true,
+    store = {},
+    isFocused = () => false,
+    isOpen = true,
+  }: { takesTools?: boolean; store?: Record<string, unknown>; isFocused?: () => boolean; isOpen?: boolean } = {},
 ) {
   const tools: RegisteredToolSpec[] = []
   const opened: string[] = []
+  // The panes up now: the player's, unless the test starts with it closed.
+  const up = new Set<string>(isOpen ? ['pixel-tunes'] : [])
   mock.store(on, store)
   on('command.register', () => ({ value: { command: 'tunes' } }))
   on('tool.register', (_, e) => {
@@ -47,9 +61,10 @@ function engine(
   })
   on('ui.open', (_, e) => {
     opened.push(e.id)
+    up.add(e.id)
     return { value: { isPlaced: true } }
   })
-  on('ui.panes', () => ({ value: [{ id: 'pixel-tunes', title: 'Pixel Tunes', isShown: true, isFocused: isFocused(), isPlaced: true }] }))
+  on('ui.panes', () => ({ value: [...up].map(id => ({ id, title: 'Pixel Tunes', isShown: true, isFocused: isFocused(), isPlaced: true })) }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   return { tools, opened }
 }
@@ -59,6 +74,14 @@ function spinnerLine(on: On): void {
   on('ui.render', { component: 'Spinner' }, ($, e) => {
     const { Text } = $.ui.resolve(e)
     return <Text>{`${e.props.word}${e.props.suffix}`}</Text>
+  })
+}
+
+/** The engine's own band beneath the plugin: empty until a mod fills it. */
+function emptyBand(on: On): void {
+  on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
+    const { Box } = $.ui.resolve(e)
+    return <Box />
   })
 }
 
@@ -462,6 +485,37 @@ test('the command controls the demo', async ($, on) => {
   expect((await $.command.run({ command: 'tunes', args: 'next' })).text).toContain('Odd Look')
   expect((await $.command.run({ command: 'tunes', args: 'pause' })).text).toContain('paused')
   expect((await $.command.run({ command: 'tunes', args: '' })).text).toContain('next to the chat')
+})
+
+test('while the pane is closed, a button above the prompt opens it', async ($, on) => {
+  mock.clock(on, { now: 0 })
+  const { opened } = engine(on, { isOpen: false })
+  emptyBand(on)
+  fakeSpotify(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+
+  const band = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  await band.press({ key: 'open' })
+  expect(opened).toEqual(['pixel-tunes'])
+  // With the pane open, the button is gone.
+  expect(await band.find({ key: 'open' })).toBeUndefined()
+  await band.unmount()
+})
+
+test('the band stays as it was in the terminal, and while a survey holds it', async ($, on) => {
+  mock.clock(on, { now: 0 })
+  engine(on, { isOpen: false })
+  emptyBand(on)
+  fakeSpotify(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+
+  const terminal = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await terminal.find({ key: 'open' })).toBeUndefined()
+  await terminal.unmount()
+
+  const survey = await $.ui.mount({ ...BAND, surface: 'desktop', props: { ...BAND.props, hasSurvey: true } })
+  expect(await survey.find({ key: 'open' })).toBeUndefined()
+  await survey.unmount()
 })
 
 test('the terminal gets a text version', async ($, on) => {
