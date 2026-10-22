@@ -816,8 +816,25 @@ test('play_music without an active device lets the pane choose one', async ($, o
   // Two devices: the choice is the person's, so nothing played on either.
   expect(spotify.calls.some(c => c.url.includes('device_id='))).toBe(false)
 
+  // The choice plays what was asked for there, not what the phone played last.
+  await ui.press({ key: 'device-phone' })
+  const played = spotify.calls.filter(c => c.method === 'PUT' && c.url.includes('/v1/me/player/play?device_id=phone'))
+  expect(played).toHaveLength(1)
+  expect(played[0]?.body).toContain('spotify:track:nc1')
+  expect(spotify.calls.some(c => c.method === 'PUT' && c.url.endsWith('/v1/me/player'))).toBe(false)
+  await ui.unmount()
+})
+
+test('closing the device picker forgets what was asked for', async ($, on) => {
+  const { spotify, ui } = await connectedPane($, on, { noDevice: true })
+
+  await $.tool.call({ tool: PLAY_MUSIC, query: 'Nightcall Kavinsky' })
+  // Closed and opened again by hand: a choice then moves the music, as it always did.
+  await ui.press({ key: 'device' })
+  await ui.press({ key: 'device' })
   await ui.press({ key: 'device-phone' })
   expect(spotify.calls.find(c => c.method === 'PUT' && c.url.endsWith('/v1/me/player'))?.body).toBe('{"device_ids":["phone"],"play":true}')
+  expect(spotify.calls.some(c => c.url.includes('device_id=phone'))).toBe(false)
   await ui.unmount()
 })
 

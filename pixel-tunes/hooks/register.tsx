@@ -303,6 +303,8 @@ async function poll($: EngineInterface): Promise<void> {
     const before = await read($, playback)
     const next = toPlayback(await playbackState($), now, before)
     if (changed(before, next, now)) await update($, playback, () => next)
+    // Music plays again by another way: what was asked for earlier is not wanted any more.
+    if (next.isPlaying) pendingPlay = null
     if (next.track?.id !== before.track?.id || next.context !== before.context) quietly(pickTheme($))
     if (next.track?.id !== before.track?.id || (await read($, queue)).some(t => t.id.startsWith('demo-'))) quietly(details($, next))
     // Same track, but its cover never arrived (a reload, a failed download): try once more.
@@ -598,6 +600,11 @@ async function start($: EngineInterface, item: Item, device?: string): Promise<v
   }
 }
 
+// What was asked to play while no device was active: once the person picks a
+// device, that plays there, not what Spotify played last. A new play or closing
+// the picker forgets it.
+let pendingPlay: Item | null = null
+
 /** The one Spotify Connect device there is; undefined when there are none or several. */
 async function onlyDevice($: EngineInterface): Promise<string | undefined> {
   const list = await devices($).catch(() => [])
@@ -610,12 +617,16 @@ async function onlyDevice($: EngineInterface): Promise<string | undefined> {
  * says what is wrong. Resolves to Spotify's refusal, or null when it plays.
  */
 async function playItem($: EngineInterface, item: Item): Promise<unknown> {
+  pendingPlay = null
   try {
     try {
       await start($, item)
     } catch (error) {
       const only = isIdle(error) ? await onlyDevice($) : undefined
-      if (only === undefined) throw error
+      if (only === undefined) {
+        if (isIdle(error)) pendingPlay = item
+        throw error
+      }
       await start($, item, only)
     }
     await say($, null)
@@ -663,7 +674,7 @@ async function pickDevice($: EngineInterface, auto: boolean): Promise<void> {
     const list = await devices($)
     const only = list[0]
     if (auto && list.length === 1 && only) {
-      await transfer($, only.id, true)
+      await playOn($, only.id)
       await update($, picker, () => null)
       await say($, null)
       schedulePoll($, 1_000)
@@ -679,15 +690,24 @@ async function pickDevice($: EngineInterface, auto: boolean): Promise<void> {
 async function togglePicker($: EngineInterface): Promise<void> {
   if (!(await isConnected($))) return say($, 'Connect Spotify first to choose a device.')
   if ((await read($, picker)) !== null) {
+    pendingPlay = null
     await update($, picker, () => null)
     return say($, null)
   }
   return pickDevice($, false)
 }
 
+/** Plays on the device: what was asked for while none was active, else what played there last. */
+async function playOn($: EngineInterface, id: string): Promise<void> {
+  const pending = pendingPlay
+  pendingPlay = null
+  if (pending) await start($, pending, id)
+  else await transfer($, id, true)
+}
+
 async function choose($: EngineInterface, id: string): Promise<void> {
   try {
-    await transfer($, id, true)
+    await playOn($, id)
     await update($, picker, () => null)
     await say($, null)
   } catch (error) {
