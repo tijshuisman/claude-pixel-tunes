@@ -1,7 +1,7 @@
 {
   "name": "pixel-tunes",
   "displayName": "Pixel Tunes",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "A pixel-art Spotify player in a pane next to your chat, with a scene that fits the music",
   "author": {
     "name": "Tijs Huisman",
@@ -35,6 +35,12 @@
       "type": "boolean",
       "title": "Look up genres on MusicBrainz",
       "description": "Looks up the genres of the playing artist on musicbrainz.org to choose the scene. For that, the artist's Spotify ID, or else the ISRC code of the track, goes to musicbrainz.org.",
+      "default": false
+    },
+    "terminal_images": {
+      "type": "boolean",
+      "title": "Draw the scene as a picture in the terminal",
+      "description": "For a terminal that draws pictures: iTerm2 3.5 or later, kitty or Ghostty. The scene is then sharp and small; elsewhere it is drawn in coloured blocks.",
       "default": false
     }
   }
