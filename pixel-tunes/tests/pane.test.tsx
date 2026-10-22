@@ -3,7 +3,7 @@ import type { On, RegisteredToolSpec } from 'claude-code'
 
 import { themeOfGenres, themeOfName } from '../hooks/genre'
 import { scenePixels, sceneCells } from '../hooks/raster'
-import { glyphs, scene, strip } from '../hooks/render'
+import { coverArt, glyphs, scene, strip } from '../hooks/render'
 import { toPlayback, toSearchItems } from '../hooks/spotify'
 import { THEMES, THEME_IDS } from '../hooks/themes'
 
@@ -1135,6 +1135,18 @@ test('every scene fits in an Svg and moves only while playing', () => {
   // Playing, the snow and the rain fall, the ball's specks and the aurora drift, and the desert's colours flow.
   for (const id of ['campfire', 'citylights', 'dancefloor', 'dreampop'] as const) expect(scene(id, true)).toContain('<animateTransform')
   expect(scene('psychedelic', true)).toContain('<animate attributeName="fill"')
+})
+
+test('a large cover never makes the pane too long to draw', () => {
+  const t = { id: 'x', uri: 'spotify:track:x', title: 'Let It Happen', artist: 'Tame Impala', album: 'Currents', durationMs: 467_000, imageUrl: 'https://i.scdn.co/image/abc' }
+  // A cover of 70 KB, as large as the download lets through: its picture is in the Svg once, which fits.
+  const big = coverArt(t, { url: t.imageUrl, dataUri: `data:image/jpeg;base64,${'A'.repeat(95_000)}` })
+  expect(big.length).toBeLessThan(131_072)
+  expect(big).toContain('<image')
+  // Past what fits, the cover is drawn without its picture rather than not at all.
+  const huge = coverArt(t, { url: t.imageUrl, dataUri: `data:image/jpeg;base64,${'A'.repeat(140_000)}` })
+  expect(huge.length).toBeLessThan(131_072)
+  expect(huge).not.toContain('<image')
 })
 
 test('with nothing playing, the strip says so', () => {

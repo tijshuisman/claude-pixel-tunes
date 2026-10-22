@@ -120,7 +120,7 @@ function picture(t: Track | null, art: Artwork | null): string {
   const inside = (body: string) => `<defs>${clip}</defs><g clip-path="url(#nc-cover)" shape-rendering="geometricPrecision">${body}</g>`
   if (t?.imageUrl && art?.url === t.imageUrl)
     return inside(
-      `<image href="${art.dataUri}" xlink:href="${art.dataUri}" x="${x}" y="${y}" width="${size}" height="${size}" preserveAspectRatio="xMidYMid meet"/>`,
+      `<image href="${art.dataUri}" x="${x}" y="${y}" width="${size}" height="${size}" preserveAspectRatio="xMidYMid meet"/>`,
     )
   if (t?.cover) {
     const [top, middle, sunColor, line] = t.cover.colors
@@ -188,14 +188,19 @@ function meter(isPlaying: boolean): string {
 
 /** The cover in its pixel frame: a still picture, so the pane draws it as an image. */
 export function coverArt(t: Track | null, art: Artwork | null): string {
-  return [
-    open(SIZE.cover.width, SIZE.cover.height),
-    `<rect width="${SIZE.cover.width}" height="${SIZE.cover.height}" fill="${BG}"/>`,
-    `<path fill="${SHADOW}" d="${rect(10, 66, 56, 2)}${rect(66, 10, 2, 56)}"/>`,
-    `<path fill="${PINK}" d="${rect(8, 6, 56, 2)}${rect(8, 64, 56, 2)}${rect(6, 8, 2, 56)}${rect(64, 8, 2, 56)}"/>`,
-    picture(t, art),
-    '</svg>',
-  ].join('')
+  const drawn = (withArt: Artwork | null) =>
+    [
+      open(SIZE.cover.width, SIZE.cover.height),
+      `<rect width="${SIZE.cover.width}" height="${SIZE.cover.height}" fill="${BG}"/>`,
+      `<path fill="${SHADOW}" d="${rect(10, 66, 56, 2)}${rect(66, 10, 2, 56)}"/>`,
+      `<path fill="${PINK}" d="${rect(8, 6, 56, 2)}${rect(8, 64, 56, 2)}${rect(6, 8, 2, 56)}${rect(64, 8, 2, 56)}"/>`,
+      picture(t, withArt),
+      '</svg>',
+    ].join('')
+  // An Svg takes at most 131,072 characters, or the desktop refuses the whole pane:
+  // a cover too large for that is drawn without its picture.
+  const svg = drawn(art)
+  return svg.length < 131_072 ? svg : drawn(null)
 }
 
 /** Now playing beside the cover: title, artist, album, heart and level meter. */
