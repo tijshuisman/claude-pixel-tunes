@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { On, RegisteredToolSpec } from 'claude-code'
 
 import { themeOfGenres, themeOfName } from '../hooks/genre'
-import { scene } from '../hooks/render'
+import { glyphs, scene, strip } from '../hooks/render'
 import { toPlayback, toSearchItems } from '../hooks/spotify'
 import { THEMES, THEME_IDS } from '../hooks/themes'
 
@@ -905,4 +905,12 @@ test('every scene fits in an Svg and moves only while playing', () => {
   // Playing, the snow and the rain fall, the ball's specks and the aurora drift, and the desert's colours flow.
   for (const id of ['campfire', 'citylights', 'dancefloor', 'dreampop'] as const) expect(scene(id, true)).toContain('<animateTransform')
   expect(scene('psychedelic', true)).toContain('<animate attributeName="fill"')
+})
+
+test('with nothing playing, the strip says so', () => {
+  const idle = { track: null, isPlaying: false, positionMs: 0, at: 0, shuffle: false, repeat: 'off', volume: 50, device: '' } as const
+  // In pixel text, where the title and the artist go.
+  const drawn = strip(idle, false)
+  expect(drawn).toContain(glyphs('Nothing', 2, 9, 2))
+  expect(drawn).toContain(glyphs('playing', 2, 29, 2))
 })

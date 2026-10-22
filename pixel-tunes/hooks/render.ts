@@ -197,7 +197,8 @@ export function strip(p: Playback, isLiked: boolean): string {
   return [
     open(SIZE.strip.width, SIZE.strip.height),
     `<rect width="${SIZE.strip.width}" height="${SIZE.strip.height}" fill="${BG}"/>`,
-    t ? label('nc-title', t.title, 2, 9, 2, 134, PINK, SHADOW) : `<path fill="${LILAC}" d="${glyphs('Stilte', 2, 9, 2)}"/>`,
+    // Nothing playing: the two words where the title and the artist go, so each fits.
+    t ? label('nc-title', t.title, 2, 9, 2, 134, PINK, SHADOW) : `<path fill="${LILAC}" d="${glyphs('Nothing', 2, 9, 2)}${glyphs('playing', 2, 29, 2)}"/>`,
     t ? label('nc-artist', t.artist, 2, 29, 2, 152, CYAN) : '',
     t ? label('nc-album', t.album, 2, 52, 1, 100, LILAC) : '',
     t ? heart(isLiked) : '',
