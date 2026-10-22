@@ -559,6 +559,23 @@ test('the terminal gets the scene in half blocks and a player of text', async ($
   await ui.unmount()
 })
 
+test('a terminal that draws pictures gets the scene as a sharp, small picture', { options: { terminal_images: true } }, async ($, on) => {
+  mock.clock(on, { now: 0 })
+  engine(on)
+  fakeSpotify(on)
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal', props: { ...PANE.props, bodyColumns: 80 } })
+  expect(await ui.find({ type: 'Raster' })).toBeUndefined()
+  const image = await ui.find({ type: 'Image' })
+  expect(image?.props.columns).toBe(58)
+  expect(image?.props.rows).toBe(16)
+  // Each art pixel four by four, so the terminal never blurs it up.
+  expect(image?.props.source).toMatchObject({ width: 464, height: 256 })
+  expect(await ui.find({ key: 'play' })).toBeDefined()
+  await ui.unmount()
+})
+
 test('every scene turns into pixels of its own for the terminal', () => {
   for (const id of THEME_IDS) {
     const px = scenePixels(id)

@@ -163,3 +163,34 @@ export function sceneCells(theme: ThemeId, columns: number): { columns: number; 
   })
   return { columns: width, rows, cells: base64(bytes) }
 }
+
+const imageCache = new Map<ThemeId, string>()
+
+/** How many screen pixels an art pixel gets in the terminal's picture, so the terminal never has to blur it up. */
+export const IMAGE_SCALE = 4
+
+/**
+ * The paused scene as RGBA pixels for a terminal that draws pictures, each art
+ * pixel a hard-edged square of IMAGE_SCALE pixels, base64.
+ */
+export function sceneImage(theme: ThemeId): { rgba: string; width: number; height: number } {
+  const width = W * IMAGE_SCALE
+  const height = H * IMAGE_SCALE
+  let rgba = imageCache.get(theme)
+  if (rgba === undefined) {
+    const px = scenePixels(theme)
+    const bytes = new Uint8Array(width * height * 4)
+    for (let y = 0; y < height; y++)
+      for (let x = 0; x < width; x++) {
+        const color = px[Math.floor(y / IMAGE_SCALE) * W + Math.floor(x / IMAGE_SCALE)] ?? 0
+        const k = (y * width + x) * 4
+        bytes[k] = (color >> 16) & 0xff
+        bytes[k + 1] = (color >> 8) & 0xff
+        bytes[k + 2] = color & 0xff
+        bytes[k + 3] = 0xff
+      }
+    rgba = base64(bytes)
+    imageCache.set(theme, rgba)
+  }
+  return { rgba, width, height }
+}

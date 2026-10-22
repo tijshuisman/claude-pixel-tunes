@@ -127,6 +127,7 @@ You set them when you install. To change them later, run `/config` in a terminal
 | `spotify_client_id` | none | The Client ID of your Spotify app |
 | `callback_port` | `8898` | The port in your redirect URI. Change both together. |
 | `genre_lookup` | off | Look up the playing artist's genres on MusicBrainz to pick the scene |
+| `terminal_images` | off | In iTerm2 3.5 or later, kitty or Ghostty: draw the scene as a sharp picture instead of coloured blocks |
 
 ## Privacy
 

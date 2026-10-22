@@ -36,7 +36,7 @@ import {
   transfer,
   upcoming,
 } from './spotify'
-import { sceneCells } from './raster'
+import { sceneCells, sceneImage } from './raster'
 import { THEMES, THEME_IDS } from './themes'
 
 const PANE = 'pixel-tunes'
@@ -199,6 +199,8 @@ let paneColumns = 0
 let progressDrawnAt = 0
 // Whether the person opted in to MusicBrainz (the genre_lookup option).
 let genreLookup = false
+// Whether the terminal draws pictures, so the scene is one (the terminal_images option).
+let terminalImages = false
 // Playlist names by URI, asked of Spotify once a session; null when it gives none.
 const playlistNames = new Map<string, string | null>()
 // The tracks whose artist MusicBrainz was asked about this session; one that failed is taken out, to be asked again.
@@ -871,6 +873,7 @@ const COMMAND_WORDS: Readonly<Record<string, Action>> = {
 export const register: Register = (on, options) => {
   configure(String(options['spotify_client_id'] ?? ''), Number(options['callback_port'] ?? 8898))
   genreLookup = options['genre_lookup'] === true
+  terminalImages = options['terminal_images'] === true
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -992,6 +995,7 @@ export const register: Register = (on, options) => {
     const { Box, Button, Link, Text } = elements
     const Svg = !isTerminal && 'Svg' in elements ? elements.Svg : undefined
     const Raster = 'Raster' in elements ? elements.Raster : undefined
+    const Image = terminalImages && 'Image' in elements ? elements.Image : undefined
     // In the terminal the controls answer a key while the pane has the keyboard.
     const key = (letter: string) => (isTerminal ? { hotkey: letter } : {})
     const Input = 'Input' in elements ? elements.Input : undefined
@@ -1059,10 +1063,23 @@ export const register: Register = (on, options) => {
       <Box flexDirection="column" backgroundColor={BG} paddingBottom="sm">
         {isTerminal || !Svg ? (
           <Box flexDirection="column" paddingX="sm">
-            {Raster && (() => {
-              const drawn = sceneCells(shownTheme, paneColumns)
-              return <Raster key="scene" columns={drawn.columns} rows={drawn.rows} cells={drawn.cells} />
-            })()}
+            {Image ? (
+              // A sharp picture, about a quarter of the blocks' size: a terminal cell is
+              // about twice as tall as it is wide, so the scene's 116 × 64 fits 58 × 16.
+              <Image
+                key="scene"
+                source={sceneImage(shownTheme)}
+                columns={Math.min(58, paneColumns - 2)}
+                rows={Math.max(4, Math.round(Math.min(58, paneColumns - 2) / 3.625))}
+                alt={THEMES[shownTheme].alt}
+              />
+            ) : (
+              Raster &&
+              (() => {
+                const drawn = sceneCells(shownTheme, paneColumns)
+                return <Raster key="scene" columns={drawn.columns} rows={drawn.rows} cells={drawn.cells} />
+              })()
+            )}
             <Box flexDirection="row" gap="xs" paddingTop="xs">
               <Text color={PINK} bold>
                 {t ? fit(t.title, Math.max(8, paneColumns - 6)) : 'Nothing playing'}
