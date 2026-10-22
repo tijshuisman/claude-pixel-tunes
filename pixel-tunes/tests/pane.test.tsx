@@ -36,6 +36,10 @@ const BAND = {
 
 const PLAY_MUSIC = 'mcp__pixel-tunes__play_music'
 
+/** The drawings in a mounted pane, without the empty spacer above the scene. */
+const art = async (ui: { findAll: (q: { type: 'Svg' }) => Promise<{ props: Record<string, unknown> }[]> }) =>
+  (await ui.findAll({ type: 'Svg' })).filter(svg => svg.props.alt !== '')
+
 // A Spotify Client ID, as the person sets it; without one there is only the demo.
 const CLIENT = { options: { spotify_client_id: 'test-client' } }
 
@@ -300,7 +304,7 @@ test('the desktop gets the scene, the player and the buttons', CLIENT, async ($,
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  const svgs = await ui.findAll({ type: 'Svg' })
+  const svgs = await art(ui)
   // Scene, cover, strip, progress.
   // Scene, cover, strip and progress first; the pixel headings below them.
   expect(svgs.length).toBeGreaterThan(4)
@@ -321,10 +325,10 @@ test('the desktop gets the scene, the player and the buttons', CLIENT, async ($,
   // The demo starts paused; play starts the drive.
   expect(String(svgs[0]?.props.source)).not.toContain('<animate attributeName="visibility"')
   await ui.press({ key: 'play' })
-  expect(String((await ui.findAll({ type: 'Svg' }))[0]?.props.source)).toContain('<animate attributeName="visibility"')
+  expect(String((await art(ui))[0]?.props.source)).toContain('<animate attributeName="visibility"')
 
   await ui.press({ key: 'next' })
-  expect(String((await ui.findAll({ type: 'Svg' }))[2]?.props.alt)).toContain('Odd Look')
+  expect(String((await art(ui))[2]?.props.alt)).toContain('Odd Look')
   await ui.unmount()
 })
 
@@ -336,10 +340,13 @@ test('in a wider pane the art grows in whole retina pixels', async ($, on) => {
 
   for (const [columns, width] of [[24, 174], [30, 232], [40, 290], [60, 464]] as const) {
     const ui = await $.ui.mount({ ...PANE, surface: 'desktop', props: { ...PANE.props, bodyColumns: columns } })
-    const [scene, cover, strip] = await ui.findAll({ type: 'Svg' })
+    const [scene, cover, strip] = await art(ui)
     expect(scene?.props.width).toBe(width)
     // The cover and the strip together are as wide as the scene.
     expect(Number(cover?.props.width) + Number(strip?.props.width)).toBe(width)
+    // Above the scene as much purple as beside it.
+    const [spacer] = await ui.findAll({ type: 'Svg' })
+    expect(spacer?.props.height).toBe(Math.round((columns * 8.5 - width) / 2))
     await ui.unmount()
   }
 })
@@ -367,7 +374,7 @@ test('in the demo, the next track starts after the last bit of a track', async (
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await ui.press({ key: 'play' })
   await clock.advance(258_000 - 97_000 + 500)
-  expect(String((await ui.findAll({ type: 'Svg' }))[2]?.props.alt)).toContain('Odd Look')
+  expect(String((await art(ui))[2]?.props.alt)).toContain('Odd Look')
   await ui.unmount()
 })
 
@@ -379,7 +386,7 @@ test('a stored login resumes by itself and follows Spotify', async ($, on) => {
   await clock.advance(300)
 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  const svgs = await ui.findAll({ type: 'Svg' })
+  const svgs = await art(ui)
   expect(String(svgs[2]?.props.alt)).toBe('Now playing Nightcall by Kavinsky')
   expect(String(svgs[1]?.props.alt)).toBe('Cover of OutRun')
   expect(String(svgs[1]?.props.source)).toContain('<image href="data:image/jpeg;base64,/9j/')
@@ -392,7 +399,7 @@ test('a stored login resumes by itself and follows Spotify', async ($, on) => {
   await ui.press({ key: 'next' })
   expect(spotify.calls.some(c => c.method === 'POST' && c.url.endsWith('/me/player/next'))).toBe(true)
   await clock.advance(800)
-  expect(String((await ui.findAll({ type: 'Svg' }))[2]?.props.alt)).toBe('Now playing Tech Noir by Gunship')
+  expect(String((await art(ui))[2]?.props.alt)).toBe('Now playing Tech Noir by Gunship')
 
   const debug = (await $.command.run({ command: 'tunes', args: 'debug' })).text ?? ''
   expect(debug).toContain('Spotify: connected')
@@ -442,7 +449,7 @@ test('the progress shows where the track is now, however long ago Spotify last h
 
   // Opened half a minute after the last news, the clock starts at 1:30, not at 1:00.
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  const progress = async () => String((await ui.findAll({ type: 'Svg' }))[3]?.props.source)
+  const progress = async () => String((await art(ui))[3]?.props.source)
   expect(clockStart(await progress())).toBe(90.3)
 
   // The desktop may load the frame again from its last drawing (after another session was in view),
@@ -488,7 +495,7 @@ test('logging in through the browser connects to Spotify, with PKCE and without 
   expect(spotify.keychain()).toBe('refresh-2')
 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(String((await ui.findAll({ type: 'Svg' }))[2]?.props.alt)).toBe('Now playing Nightcall by Kavinsky')
+  expect(String((await art(ui))[2]?.props.alt)).toBe('Now playing Nightcall by Kavinsky')
   expect(await ui.find({ key: 'connect' })).toBeUndefined()
 
   expect((await $.command.run({ command: 'tunes', args: 'logout' })).text).toContain('disconnected')
@@ -628,7 +635,7 @@ for (const [image, isFetched] of [
     await clock.advance(300)
 
     const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-    const cover = String((await ui.findAll({ type: 'Svg' }))[1]?.props.source)
+    const cover = String((await art(ui))[1]?.props.source)
     expect(cover.includes('<image href="data:image/jpeg;base64,/9j/')).toBe(isFetched)
     // The shell only ever sees an allowed address, as an argument.
     expect(spotify.downloads).toEqual(isFetched ? [image] : [])
@@ -655,7 +662,7 @@ async function connectedPane(
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const played = () => spotify.calls.filter(c => c.method === 'PUT' && c.url.endsWith('/v1/me/player/play')).map(c => c.body)
   /** What the scene shows, by its alt: "Pixel-art campfire: …". */
-  const shows = async () => String((await ui.findAll({ type: 'Svg' }))[0]?.props.alt)
+  const shows = async () => String((await art(ui))[0]?.props.alt)
   /** The theme button's label. */
   const themeButton = async () => (await ui.find({ key: 'theme' }))?.text
   return { clock, spotify, ui, played, tools, opened, shows, themeButton }
@@ -778,7 +785,7 @@ test('Claude puts music on with play_music, and the model only hears that it wor
   // What plays, the person sees: in the spinner and in the pane.
   await clock.advance(800)
   expect((await spinner.find({ type: 'Text' }))?.text).toBe('Thinking · ♪ Nightcall – Kavinsky…')
-  expect(String((await ui.findAll({ type: 'Svg' }))[0]?.props.source)).toContain('<animate attributeName="visibility"')
+  expect(String((await art(ui))[0]?.props.source)).toContain('<animate attributeName="visibility"')
   await spinner.unmount()
   await ui.unmount()
 })
@@ -850,7 +857,7 @@ test('a session that takes no tools from plugins keeps the player', CLIENT, asyn
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(String((await ui.findAll({ type: 'Svg' }))[2]?.props.alt)).toContain('Nightcall')
+  expect(String((await art(ui))[2]?.props.alt)).toContain('Nightcall')
   expect(await ui.find({ key: 'connect' })).toBeDefined()
   await ui.unmount()
 })

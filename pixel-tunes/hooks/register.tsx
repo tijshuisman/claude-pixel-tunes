@@ -1103,6 +1103,8 @@ export const register: Register = (on, options) => {
     // A narrow pane puts the volume under the device and draws its rows closer together.
     const isNarrow = paneColumns < 36
     const sized = (size: { width: number; height: number }) => ({ width: Math.round(size.width * zoom), height: Math.round(size.height * zoom) })
+    // Above the scene as much purple as beside it, so it sits in a frame of its own.
+    const sceneMargin = Math.max(0, Math.min(32, Math.round((paneColumns * CELL_PX - sized(SIZE.scene).width) / 2)))
 
     return (
       // In the terminal the purple fills the pane to the bottom; on the desktop it is a card.
@@ -1138,6 +1140,9 @@ export const register: Register = (on, options) => {
           </Box>
         ) : (
         <Box flexDirection="column" alignItems="center">
+          {Svg && sceneMargin > 0 && (
+            <Svg source={`<svg xmlns="http://www.w3.org/2000/svg" width="1" height="${sceneMargin}"/>`} alt="" width={1} height={sceneMargin} />
+          )}
           <Svg
             source={scene(shownTheme, p.isPlaying)}
             alt={THEMES[shownTheme].alt}
