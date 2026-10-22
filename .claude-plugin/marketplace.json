@@ -1,0 +1,16 @@
+{
+  "name": "claude-pixel-tunes",
+  "owner": {
+    "name": "Tijs Huisman"
+  },
+  "metadata": {
+    "description": "Pixel Tunes: a pixel-art Spotify player for Claude Code"
+  },
+  "plugins": [
+    {
+      "name": "pixel-tunes",
+      "source": "./pixel-tunes",
+      "description": "A pixel-art Spotify player in a pane next to your chat, with a scene that fits the music"
+    }
+  ]
+}

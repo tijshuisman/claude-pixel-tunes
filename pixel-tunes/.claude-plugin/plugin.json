@@ -1,0 +1,41 @@
+{
+  "name": "pixel-tunes",
+  "displayName": "Pixel Tunes",
+  "version": "0.1.0",
+  "description": "A pixel-art Spotify player in a pane next to your chat, with a scene that fits the music",
+  "author": {
+    "name": "Tijs Huisman",
+    "url": "https://github.com/tijshuisman"
+  },
+  "homepage": "https://github.com/tijshuisman/claude-pixel-tunes",
+  "repository": "https://github.com/tijshuisman/claude-pixel-tunes",
+  "license": "MIT",
+  "keywords": [
+    "spotify",
+    "music",
+    "pixel-art",
+    "mod"
+  ],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "spotify_client_id": {
+      "type": "string",
+      "title": "Spotify Client ID",
+      "description": "The Client ID of your own app in the Spotify Developer Dashboard (no secret needed). The README explains how to make one."
+    },
+    "callback_port": {
+      "type": "number",
+      "title": "Port for the login callback",
+      "description": "The port in your redirect URI http://127.0.0.1:<port>/callback",
+      "default": 8898,
+      "min": 1024,
+      "max": 65535
+    },
+    "genre_lookup": {
+      "type": "boolean",
+      "title": "Look up genres on MusicBrainz",
+      "description": "Looks up the genres of the playing artist on musicbrainz.org to choose the scene. For that, the ISRC code of the track goes to musicbrainz.org.",
+      "default": false
+    }
+  }
+}

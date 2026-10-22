@@ -1,0 +1,4 @@
+.DS_Store
+*.log
+# Claude Code's own folders: worktrees of parallel sessions, local settings.
+.claude/
