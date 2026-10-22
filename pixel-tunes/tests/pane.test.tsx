@@ -67,6 +67,7 @@ function engine(
   })
   on('ui.panes', () => ({ value: [...up].map(id => ({ id, title: 'Pixel Tunes', isShown: true, isFocused: isFocused(), isPlaced: true })) }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('classic.SessionStart', () => ({}))
   return { tools, opened }
 }
 
@@ -409,6 +410,26 @@ test('a stored login resumes by itself and follows Spotify', async ($, on) => {
 
 /** Where a progress drawing's clock starts, in seconds: its frame counts on from there by itself. */
 const clockStart = (source: string) => Number(/ begin="-([\d.]+)s"/.exec(source)?.[1])
+
+test('after a /clear, Pixel Tunes connects again with the login in the Keychain', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  engine(on)
+  const spotify = fakeSpotify(on, { keychain: 'refresh-1' })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(300)
+  const logins = () => spotify.calls.filter(c => c.url === 'https://accounts.spotify.com/api/token').length
+  const before = logins()
+  expect(before).toBeGreaterThan(0)
+
+  // Another start (a resume) leaves it be; a /clear connects again.
+  await $.classic.SessionStart({ source: 'resume' })
+  await clock.advance(300)
+  expect(logins()).toBe(before)
+  await $.classic.SessionStart({ source: 'clear' })
+  await clock.advance(300)
+  expect(logins()).toBe(before + 1)
+  expect((await $.command.run({ command: 'tunes', args: 'debug' })).text).toContain('Spotify: connected')
+})
 
 test('the progress shows where the track is now, however long ago Spotify last had news', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })

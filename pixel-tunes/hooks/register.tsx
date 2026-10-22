@@ -923,6 +923,18 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
+  // A /clear starts a session of its own, with its state empty and no session.start:
+  // set up again, and connect again with the login in the Keychain.
+  on('classic.SessionStart', async ($, e, next) => {
+    if (e.source === 'clear') {
+      await seed($)
+      await arm($)
+      await pickTheme($)
+      $.clock.after(0, () => quietly(boot($)))
+    }
+    return next(e)
+  })
+
   on('command.run', { command: 'tunes' }, async ($, e) => {
     const word = (e.args ?? '').trim().toLowerCase()
     if (word === 'login' || word === 'connect') {
