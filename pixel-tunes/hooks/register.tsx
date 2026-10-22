@@ -189,6 +189,11 @@ function step(p: Playback, list: readonly Track[], action: Action, now: number, 
 // Module timers: a reload drops them and session.start starts them again.
 let demoTimer: Timer | undefined
 let pollTimer: Timer | undefined
+// The terminal's scene moves while music plays: what the last drawing showed, and
+// the timer that draws its next frame.
+let sceneTimer: Timer | undefined
+let sceneShown: { theme: ThemeId; isImage: boolean; columns: number } | null = null
+const SCENE_FRAME_MS = 200
 let pollFailed = false
 // The last cover asked for, and what came of it (for `/tunes debug`).
 let artworkTried = ''
@@ -257,6 +262,31 @@ async function act($: EngineInterface, action: Action): Promise<void> {
 
 async function say($: EngineInterface, text: string | null): Promise<void> {
   if ((await read($, notice)) !== text) await update($, notice, () => text)
+}
+
+/** Seconds on the terminal scene's clock: the same for every frame and every drawing. */
+const sceneSeconds = (now: number) => (now % 3_600_000) / 1000
+
+/** Keeps the terminal's scene moving while music plays and a terminal draws it. */
+function animateScene($: EngineInterface, shown: { theme: ThemeId; isImage: boolean; columns: number } | null): void {
+  sceneShown = shown
+  if (shown && !sceneTimer) sceneTimer = $.clock.after(SCENE_FRAME_MS, () => quietly(sceneFrame($)))
+}
+
+async function sceneFrame($: EngineInterface): Promise<void> {
+  sceneTimer = undefined
+  const shown = sceneShown
+  if (!shown || !(await read($, playback)).isPlaying) return
+  const t = sceneSeconds(await $.clock.now())
+  const result = shown.isImage
+    ? await $.ui.blit({ requestId: PANE, key: 'scene', source: sceneImage(shown.theme, true, t) })
+    : await $.ui.blit({ requestId: PANE, key: 'scene', ...sceneCells(shown.theme, shown.columns, true, t) })
+  // Not drawn any more (closed, or another surface): stop until a drawing starts it again.
+  if (result.deny) {
+    sceneShown = null
+    return
+  }
+  sceneTimer = $.clock.after(SCENE_FRAME_MS, () => quietly(sceneFrame($)))
 }
 
 function schedulePoll($: EngineInterface, ms: number): void {
@@ -1057,6 +1087,7 @@ export const register: Register = (on, options) => {
 
     // The art grows with the pane.
     const zoom = zoomFor(paneColumns)
+    if (isTerminal) animateScene($, p.isPlaying ? { theme: shownTheme, isImage: Image !== undefined, columns: paneColumns } : null)
     // A narrow pane puts the volume under the device and draws its rows closer together.
     const isNarrow = paneColumns < 36
     const sized = (size: { width: number; height: number }) => ({ width: Math.round(size.width * zoom), height: Math.round(size.height * zoom) })
@@ -1070,7 +1101,7 @@ export const register: Register = (on, options) => {
               // as it is wide, so the scene's 116 × 64 takes a row for every 3.6 columns.
               <Image
                 key="scene"
-                source={sceneImage(shownTheme)}
+                source={sceneImage(shownTheme, p.isPlaying, sceneSeconds(now))}
                 columns={Math.max(8, Math.min(116, paneColumns - 2))}
                 rows={Math.max(3, Math.round(Math.max(8, Math.min(116, paneColumns - 2)) / 3.625))}
                 alt={THEMES[shownTheme].alt}
@@ -1078,7 +1109,7 @@ export const register: Register = (on, options) => {
             ) : (
               Raster &&
               (() => {
-                const drawn = sceneCells(shownTheme, paneColumns)
+                const drawn = sceneCells(shownTheme, paneColumns, p.isPlaying, sceneSeconds(now))
                 return <Raster key="scene" columns={drawn.columns} rows={drawn.rows} cells={drawn.cells} />
               })()
             )}

@@ -571,8 +571,10 @@ test('a terminal that draws pictures gets the scene as a sharp picture as wide a
   // As wide as the pane, a row for every 3.6 columns.
   expect(image?.props.columns).toBe(78)
   expect(image?.props.rows).toBe(22)
-  // Each art pixel six by six, so the terminal hardly has to blur it up.
-  expect(image?.props.source).toMatchObject({ width: 696, height: 384 })
+  // A PNG of the mod's own, small enough to send several times a second.
+  const source = String((image?.props.source as { png?: string } | undefined)?.png)
+  expect(source.startsWith('iVBORw0KGgo')).toBe(true)
+  expect(source.length).toBeLessThan(150_000)
   expect(await ui.find({ key: 'play' })).toBeDefined()
   await ui.unmount()
 })
