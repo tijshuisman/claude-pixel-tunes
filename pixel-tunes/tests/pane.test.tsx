@@ -552,6 +552,8 @@ test('the terminal gets the scene in half blocks and a player of text', async ($
   expect(await ui.find({ type: 'Text', text: /^Kavinsky$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^1:37 ━+─+ 4:18$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /UP NEXT/ })).toBeDefined()
+  // Purple to the bottom of the pane.
+  expect((await ui.find({ type: 'Box' }))?.props.minHeight).toBe(40)
 
   // The controls answer the same presses as on the desktop.
   await ui.press({ key: 'next' })

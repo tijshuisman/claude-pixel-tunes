@@ -1093,7 +1093,8 @@ export const register: Register = (on, options) => {
     const sized = (size: { width: number; height: number }) => ({ width: Math.round(size.width * zoom), height: Math.round(size.height * zoom) })
 
     return (
-      <Box flexDirection="column" backgroundColor={BG} paddingBottom="sm">
+      // In the terminal the purple fills the pane to the bottom; on the desktop it is a card.
+      <Box flexDirection="column" backgroundColor={BG} paddingBottom="sm" {...(isTerminal ? { minHeight: e.props.scroll.bodyRows } : {})}>
         {isTerminal || !Svg ? (
           <Box flexDirection="column" paddingX="sm">
             {Image ? (
