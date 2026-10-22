@@ -10,27 +10,30 @@ Pixel Tunes has six scenes, one per family of music. Each one moves only while m
 
 <table>
   <tr>
-    <td align="center"><img src="docs/scenes/nightdrive.svg" width="360" alt="Pixel-art night drive: a setting sun behind the city, a neon grid and a car"><br><b>Night Drive</b></td>
-    <td align="center"><img src="docs/scenes/campfire.svg" width="360" alt="Pixel-art campfire: a snowy pine forest under the stars, a log cabin with warm light and a crackling fire"><br><b>Campfire</b></td>
+    <td width="186"><img src="docs/scenes/nightdrive.svg" width="160" alt="Pixel-art night drive: a setting sun behind the city, a neon grid and a car"></td>
+    <td><b>Night Drive</b>, the default<br>synthwave, retrowave, outrun, vaporwave, darksynth, dreamwave</td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/scenes/citylights.svg" width="360" alt="Pixel-art city lights: a wet street in the rain, brick buildings with a water tower and a bar with a red neon sign"><br><b>City Lights</b></td>
-    <td align="center"><img src="docs/scenes/dancefloor.svg" width="360" alt="Pixel-art dance floor: a disco ball over a floor of glowing tiles, a DJ between the speakers and laser beams"><br><b>Dance Floor</b></td>
+    <td width="186"><img src="docs/scenes/campfire.svg" width="160" alt="Pixel-art campfire: a snowy pine forest under the stars, a log cabin with warm light and a crackling fire"></td>
+    <td><b>Campfire</b><br>folk, indie folk, folk rock, folk pop, chamber folk, contemporary folk, alt-country, americana, country, bluegrass, singer-songwriter, folktronica, stomp and holler, acoustic</td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/scenes/psychedelic.svg" width="360" alt="Pixel-art psychedelic: a desert at sunset, a big sun in rings of colour with turning rays, mesas and rippling sand"><br><b>Psychedelic</b></td>
-    <td align="center"><img src="docs/scenes/dreampop.svg" width="360" alt="Pixel-art dream pop: a full moon over a mirroring lake, a slow aurora, mist over the water and reeds"><br><b>Dream Pop</b></td>
+    <td width="186"><img src="docs/scenes/citylights.svg" width="160" alt="Pixel-art city lights: a wet street in the rain, brick buildings with a water tower and a bar with a red neon sign"></td>
+    <td><b>City Lights</b><br>rock of any kind (indie rock, garage rock, art rock…), punk and post-punk, new wave, indie, alternative, britpop, grunge, art pop, baroque pop, chamber pop</td>
+  </tr>
+  <tr>
+    <td width="186"><img src="docs/scenes/dancefloor.svg" width="160" alt="Pixel-art dance floor: a disco ball over a floor of glowing tiles, a DJ between the speakers and laser beams"></td>
+    <td><b>Dance Floor</b><br>house (French house, deep house…), disco and nu disco, dance, dance-punk, big beat, UK garage, techno, electroclash</td>
+  </tr>
+  <tr>
+    <td width="186"><img src="docs/scenes/psychedelic.svg" width="160" alt="Pixel-art psychedelic: a desert at sunset, a big sun in rings of colour with turning rays, mesas and rippling sand"></td>
+    <td><b>Psychedelic</b><br>psychedelic rock, pop and folk, neo-psychedelia, freak folk, surf, space rock, acid rock, krautrock</td>
+  </tr>
+  <tr>
+    <td width="186"><img src="docs/scenes/dreampop.svg" width="160" alt="Pixel-art dream pop: a full moon over a mirroring lake, a slow aurora, mist over the water and reeds"></td>
+    <td><b>Dream Pop</b><br>dream pop, shoegaze, slowcore, downtempo, ambient, ambient pop, chillwave, ethereal wave, trip hop</td>
   </tr>
 </table>
-
-| Scene | Genres |
-|---|---|
-| **Night Drive**, the default | synthwave, retrowave, outrun, vaporwave, darksynth, dreamwave |
-| **Campfire** | folk, indie folk, folk rock, folk pop, chamber folk, contemporary folk, alt-country, americana, country, bluegrass, singer-songwriter, folktronica, stomp and holler, acoustic |
-| **City Lights** | rock of any kind (indie rock, garage rock, art rock…), punk and post-punk, new wave, indie, alternative, britpop, grunge, art pop, baroque pop, chamber pop |
-| **Dance Floor** | house (French house, deep house…), disco and nu disco, dance, dance-punk, big beat, UK garage, techno, electroclash |
-| **Psychedelic** | psychedelic rock, pop and folk, neo-psychedelia, freak folk, surf, space rock, acid rock, krautrock |
-| **Dream Pop** | dream pop, shoegaze, slowcore, downtempo, ambient, ambient pop, chillwave, ethereal wave, trip hop |
 
 Spotify no longer tells apps the genre of what plays, so Pixel Tunes picks the scene itself. The first rule that gives an answer wins:
 
