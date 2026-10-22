@@ -6,7 +6,7 @@ import { DEMO_QUEUE } from './demo'
 import { artistsOf, lookUpGenre, nameKey, remember, themeFor } from './genre'
 import type { Lookup } from './genre'
 import { BG, CYAN, LILAC, PINK } from './pixel'
-import { SIZE, coverArt, fmt, progress, scene, strip } from './render'
+import { SIZE, coverArt, fmt, pixelLabel, progress, scene, strip } from './render'
 import {
   SpotifyError,
   artworkDataUri,
@@ -65,6 +65,9 @@ const theme = atom({ plugin: 'pixel-tunes', key: 'theme' } as const, NO_THEME)
 
 const NO_BROWSING: Browse = { view: 'queue', query: '', search: [], playlists: [], hasMorePlaylists: false, recent: [], loading: null, message: null }
 const browse = atom({ plugin: 'pixel-tunes', key: 'browse' } as const, NO_BROWSING)
+
+/** The pixel heading over each view. */
+const HEADINGS: Readonly<Record<View, string>> = { queue: 'UP NEXT', search: 'SEARCH', playlists: 'PLAYLISTS', recent: 'RECENT' }
 
 const VIEWS: readonly [View, string][] = [
   ['queue', 'Queue'],
@@ -181,13 +184,6 @@ let genreNote = 'nothing looked up yet this session'
 function fit(text: string, max: number): string {
   const chars = [...text]
   return chars.length <= max ? text : `${chars.slice(0, Math.max(1, max - 1)).join('').trimEnd()}…`
-}
-
-/** A row's title and subtitle within `room` characters; the title goes first. */
-function squeeze(title: string, subtitle: string, room: number): { title: string; subtitle: string } {
-  const head = fit(title, room)
-  const left = room - [...head].length - 1
-  return { title: head, subtitle: subtitle && left >= 6 ? fit(subtitle, left) : '' }
 }
 
 /** Work nobody awaits (a timer's, a press's) must not leave a rejection behind. */
@@ -984,10 +980,11 @@ export const register: Register = (on, options) => {
     const isLiked = t !== null && saved.includes(t.id)
     const isLive = acct.status === 'connected'
     const index = Math.max(0, list.findIndex(x => x.id === t?.id))
+    // What comes after the track shown above: the queue without what plays now.
     const upNext = isLive
-      ? list.slice(0, 5)
-      : list.length > 0
-        ? [0, 1, 2, 3, 4].map(k => list[(index + k) % list.length]).filter(x => x !== undefined)
+      ? list.filter((x, k) => !(k === 0 && x.id === t?.id)).slice(0, 4)
+      : list.length > 1
+        ? [1, 2, 3, 4].map(k => list[(index + k) % list.length]).filter(x => x !== undefined && x.id !== t?.id)
         : []
     const bars = Math.round(p.volume / 10)
     const spotifyPage = t ? webUrl(t) : undefined
@@ -1004,21 +1001,29 @@ export const register: Register = (on, options) => {
     paneColumns = e.props.bodyColumns
     const room = Math.min(90, Math.max(20, Math.round(paneColumns * 1.1) - 4))
 
-    // One result: press to play it; a track also has + for the queue.
-    const row = (item: Item, id: string) => {
-      const line = squeeze(item.title, item.subtitle, item.kind === 'track' ? room - 3 : room)
-      return (
-        <Box flexDirection="row" alignItems="center" gap="xs">
-          <Box flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
-            <Button key={`play-${id}`} plain onPress={() => quietly(playItem($, item))}>
-              {line.title}
-              {line.subtitle ? <Text color={LILAC}> {line.subtitle}</Text> : ''}
-            </Button>
-          </Box>
-          {item.kind === 'track' && <Button key={`queue-${id}`} plain dimColor label="+" onPress={() => quietly(addToQueue($, item))} />}
-        </Box>
-      )
+    // A heading in the pixel font of the title above, so the lower half speaks its style.
+    const heading = (text: string, color: string, p = 1) => {
+      const drawn = pixelLabel(text, color, p)
+      return <Svg source={drawn.source} alt={text} width={drawn.width} height={drawn.height} />
     }
+
+    // One result: press to play it; a track also has + for the queue. The title on
+    // its own line, what it is from dimmed beneath.
+    const row = (item: Item, id: string) => (
+      <Box flexDirection="row" alignItems="center" gap="xs">
+        <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
+          <Button key={`play-${id}`} plain onPress={() => quietly(playItem($, item))}>
+            {fit(item.title, room)}
+          </Button>
+          {item.subtitle && (
+            <Text color="#7d68a8" size="footnote">
+              {fit(item.subtitle, room)}
+            </Text>
+          )}
+        </Box>
+        {item.kind === 'track' && <Button key={`queue-${id}`} plain dimColor label="+" onPress={() => quietly(addToQueue($, item))} />}
+      </Box>
+    )
 
     return (
       <Box flexDirection="column" backgroundColor={BG} paddingBottom="sm">
@@ -1062,20 +1067,25 @@ export const register: Register = (on, options) => {
           <Button key="like" label={isLiked ? ICON.heart : ICON.noHeart} onPress={() => quietly(like($))} />
         </Box>
 
-        <Box flexDirection="column" paddingX="sm" gap="xs">
-          <Box flexDirection="row" alignItems="center" gap="xs">
-            <Button key="device" plain dimColor label={`${p.device || 'Choose a device'} ▾`} onPress={() => quietly(togglePicker($))} />
-            <Box flexGrow={1} />
-            <Button key="softer" label="−" plain onPress={() => quietly(act($, 'softer'))} />
-            <Text color={CYAN} mono>
-              {'▮'.repeat(bars)}
-              <Text color="#2a1452">{'▮'.repeat(10 - bars)}</Text>
-            </Text>
-            <Button key="louder" label="+" plain onPress={() => quietly(act($, 'louder'))} />
-          </Box>
+        <Box flexDirection="column" paddingX="sm" gap="sm">
+          <Box flexDirection="column" gap="xs">
+            <Box flexDirection="row" alignItems="center" gap="xs">
+              {heading('ON', '#7d68a8')}
+              <Button key="device" plain label={`${p.device || 'Choose a device'} ▾`} onPress={() => quietly(togglePicker($))} />
+              <Box flexGrow={1} />
+              {heading('VOL', '#7d68a8')}
+              <Button key="softer" label="−" plain onPress={() => quietly(act($, 'softer'))} />
+              <Text color={CYAN} mono>
+                {'▮'.repeat(bars)}
+                <Text color="#2a1452">{'▮'.repeat(10 - bars)}</Text>
+              </Text>
+              <Button key="louder" label="+" plain onPress={() => quietly(act($, 'louder'))} />
+            </Box>
 
-          <Box flexDirection="row" alignItems="center">
-            <Button key="theme" plain dimColor label={`Scene: ${THEMES[shownTheme].name} ▾`} onPress={() => quietly(toggleThemes($))} />
+            <Box flexDirection="row" alignItems="center" gap="xs">
+              {heading('SCENE', '#7d68a8')}
+              <Button key="theme" plain label={`${THEMES[shownTheme].name} ▾`} onPress={() => quietly(toggleThemes($))} />
+            </Box>
           </Box>
 
           {th.isPicking && (
@@ -1173,44 +1183,44 @@ export const register: Register = (on, options) => {
             </Box>
           )}
 
+          <Box height={1} backgroundColor="#2a1452" />
+
           {isLive && (
-            <Box flexDirection="row" flexWrap="wrap" gap="xs" paddingTop="xs">
+            <Box flexDirection="row" flexWrap="wrap" gap="sm">
               {VIEWS.map(([view, name]) => (
-                <Button
-                  key={`tab-${view}`}
-                  plain
-                  dimColor={view !== shown}
-                  label={view === shown ? `▸ ${name}` : name}
-                  onPress={() => quietly(openView($, view))}
-                />
+                <Box flexDirection="column" gap="xs">
+                  <Button key={`tab-${view}`} plain dimColor={view !== shown} label={name} onPress={() => quietly(openView($, view))} />
+                  <Box height={2} backgroundColor={view === shown ? PINK : BG} />
+                </Box>
               ))}
             </Box>
           )}
 
+          {heading(HEADINGS[shown], CYAN, 2)}
+
           {shown === 'queue' && (
-            <Box flexDirection="column" gap="xs">
-              {!isLive && (
-                <Text color={LILAC} size="footnote">
-                  Now and next
-                </Text>
-              )}
+            <Box flexDirection="column" gap="sm">
               {upNext.length === 0 && (
                 <Text color="#7d68a8" size="footnote">
                   {isLive ? 'Nothing in the queue yet.' : 'Empty.'}
                 </Text>
               )}
-              {upNext.map((track, k) => {
-                const line = squeeze(track.title, `${track.artist} · ${fmt(track.durationMs)}`, room - 3)
-                return (
-                  <Box flexDirection="row" minWidth={0} overflow="hidden">
+              {upNext.map((track, k) => (
+                <Box flexDirection="row" alignItems="center" gap="sm">
+                  {heading(String(k + 1).padStart(2, '0'), PINK)}
+                  <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
                     <Button key={`q-${k}-${track.id}`} plain onPress={() => quietly(act($, { play: track.id }))}>
-                      {k === 0 ? '♪ ' : `${k + 1}. `}
-                      {line.title}
-                      {line.subtitle ? <Text color={LILAC}> {line.subtitle}</Text> : ''}
+                      {fit(track.title, room - 8)}
                     </Button>
+                    <Text color="#7d68a8" size="footnote">
+                      {fit(track.artist, room - 8)}
+                    </Text>
                   </Box>
-                )
-              })}
+                  <Text color="#7d68a8" size="footnote" mono>
+                    {fmt(track.durationMs)}
+                  </Text>
+                </Box>
+              ))}
             </Box>
           )}
 
@@ -1266,12 +1276,12 @@ export const register: Register = (on, options) => {
           )}
 
           {isLive && (
-            <Box flexDirection="row" alignItems="center" gap="xs" paddingTop="xs">
+            <Box flexDirection="row" alignItems="center" gap="xs">
               <Text color="#7d68a8" size="caption">
                 Music via Spotify · {acct.name}
               </Text>
               <Box flexGrow={1} />
-              {spotifyPage && <Link href={spotifyPage} label="Open in Spotify" />}
+              {spotifyPage && <Link href={spotifyPage} label="Open in Spotify ↗" />}
             </Box>
           )}
         </Box>

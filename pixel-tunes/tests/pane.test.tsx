@@ -300,7 +300,8 @@ test('the desktop gets the scene, the player and the buttons', CLIENT, async ($,
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const svgs = await ui.findAll({ type: 'Svg' })
   // Scene, cover, strip, progress.
-  expect(svgs).toHaveLength(4)
+  // Scene, cover, strip and progress first; the pixel headings below them.
+  expect(svgs.length).toBeGreaterThan(4)
   for (const svg of svgs) {
     const source = String(svg.props.source)
     expect(source.startsWith('<svg')).toBe(true)
@@ -608,7 +609,7 @@ test('your playlists, loading more, and playing one', async ($, on) => {
 
   await ui.press({ key: 'tab-playlists' })
   expect((await ui.find({ key: 'play-pl-0' }))?.text).toContain('Coding at 3am')
-  expect((await ui.find({ key: 'play-pl-1' }))?.text).toContain('7 tracks')
+  expect(await ui.find({ type: 'Text', text: /7 tracks/ })).toBeDefined()
   await ui.press({ key: 'more-playlists' })
   expect((await ui.find({ key: 'play-pl-2' }))?.text).toContain('Retro')
   expect(await ui.find({ key: 'more-playlists' })).toBeUndefined()
@@ -627,8 +628,9 @@ test('recently played, each track once, in its own context', async ($, on) => {
   expect(await ui.find({ key: 'play-r-3' })).toBeUndefined()
 
   // A long line is cut to the pane's width, so its + stays in view.
-  const long = (await ui.find({ key: 'play-r-2' }))?.text ?? ''
-  expect(long.startsWith('Zenith Kavinsky')).toBe(true)
+  expect((await ui.find({ key: 'play-r-2' }))?.text).toBe('Zenith')
+  const long = (await ui.find({ type: 'Text', text: /^Kavinsky, Olivia/ }))?.text ?? ''
+  expect(long.startsWith('Kavinsky, Olivia')).toBe(true)
   expect(long.endsWith('…')).toBe(true)
   expect([...long].length).toBeLessThanOrEqual(30)
   expect(await ui.find({ key: 'queue-r-2' })).toBeDefined()
@@ -828,11 +830,11 @@ test('a remembered artist picks the scene, also as a guest, and every family has
   const { clock, spotify, ui, shows, themeButton } = await connectedPane($, on, { current: song('ff', 'Mykonos', ['Fleet Foxes']) })
   // There is no list to start from: an artist nobody chose a scene for gets the night drive.
   expect(await shows()).toContain('Pixel-art night drive')
-  expect(await themeButton()).toBe('Scene: Night Drive ▾')
+  expect(await themeButton()).toBe('Night Drive ▾')
   await ui.press({ key: 'theme' })
   await ui.press({ key: 'theme-campfire' })
   await ui.press({ key: 'remember-artist' })
-  expect(await themeButton()).toBe('Scene: Campfire ▾')
+  expect(await themeButton()).toBe('Campfire ▾')
 
   // A guest counts too: the first artist on the list chooses.
   spotify.play(song('ft', 'Together', ['Someone Unknown', 'Fleet Foxes']))
@@ -868,7 +870,7 @@ test('a manual pick wins, and remembering it for the artist makes it the rule', 
   await ui.press({ key: 'theme-campfire' })
   await ui.press({ key: 'remember-artist' })
   expect(await ui.find({ key: 'theme-auto' })).toBeUndefined()
-  expect(await themeButton()).toBe('Scene: Campfire ▾')
+  expect(await themeButton()).toBe('Campfire ▾')
   await ui.press({ key: 'theme' })
   expect((await ui.find({ key: 'theme-auto' }))?.text).toBe('● Automatic (Campfire)')
   spotify.play(song('nd3', 'River Man', ['Nick Drake']))

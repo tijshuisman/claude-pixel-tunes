@@ -71,6 +71,13 @@ export function glyphs(text: string, x: number, y: number, p: number): string {
 
 export const textWidth = (text: string, p: number) => Math.max(0, chars(text).length * 6 - 1) * p
 
+/** A heading in the pixel font, as its own small Svg: `p` screen pixels per font pixel. */
+export function pixelLabel(text: string, color: string, p = 1): { source: string; width: number; height: number } {
+  const width = Math.max(1, textWidth(text, p))
+  const height = 7 * p
+  return { source: `${open(width, height)}<path fill="${color}" d="${glyphs(text, 0, 0, p)}"/></svg>`, width, height }
+}
+
 export function fmt(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000))
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
