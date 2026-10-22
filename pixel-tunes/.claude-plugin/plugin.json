@@ -34,7 +34,7 @@
     "genre_lookup": {
       "type": "boolean",
       "title": "Look up genres on MusicBrainz",
-      "description": "Looks up the genres of the playing artist on musicbrainz.org to choose the scene. For that, the ISRC code of the track goes to musicbrainz.org.",
+      "description": "Looks up the genres of the playing artist on musicbrainz.org to choose the scene. For that, the artist's Spotify ID, or else the ISRC code of the track, goes to musicbrainz.org.",
       "default": false
     }
   }

@@ -302,7 +302,7 @@ type RawItem = {
   name: string
   duration_ms: number
   external_ids?: { isrc?: string }
-  artists?: { name: string }[]
+  artists?: { name: string; id?: string | null; uri?: string }[]
   album?: { uri?: string; name: string; images?: RawImage[] }
   show?: { name: string; images?: RawImage[] }
   images?: RawImage[]
@@ -339,7 +339,9 @@ export function pickImage(images: readonly RawImage[] | undefined): string | und
 }
 
 export function toTrack(item: RawItem): Track {
-  const artists = (item.artists ?? []).map(a => a.name).filter(Boolean)
+  const credited = (item.artists ?? []).filter(a => a.name)
+  const artists = credited.map(a => a.name)
+  const artistIds = credited.map(a => a.id ?? a.uri?.split(':')[2] ?? '')
   const isrc = item.external_ids?.isrc
   return {
     id: item.id,
@@ -349,7 +351,7 @@ export function toTrack(item: RawItem): Track {
     album: item.album?.name ?? item.show?.name ?? '',
     durationMs: item.duration_ms,
     imageUrl: pickImage(item.album?.images ?? item.images ?? item.show?.images),
-    ...(artists.length > 0 ? { artists } : {}),
+    ...(artists.length > 0 ? { artists, artistIds } : {}),
     ...(isrc ? { isrc } : {}),
   }
 }

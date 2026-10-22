@@ -172,8 +172,8 @@ let progressDrawnAt = 0
 let genreLookup = false
 // Playlist names by URI, asked of Spotify once a session; null when it gives none.
 const playlistNames = new Map<string, string | null>()
-// The recordings, by ISRC, asked of MusicBrainz this session; one that failed is taken out, to be asked again.
-const askedRecordings = new Set<string>()
+// The tracks whose artist MusicBrainz was asked about this session; one that failed is taken out, to be asked again.
+const askedTracks = new Set<string>()
 // What the last genre lookup came to (for `/tunes debug`), never naming the track or its artist.
 let genreNote = 'nothing looked up yet this session'
 
@@ -408,17 +408,16 @@ async function pickTheme($: EngineInterface): Promise<void> {
   }
 }
 
-/** Asks MusicBrainz about the track's artist, once a recording; when its genres fit a family, chooses again. */
+/** Asks MusicBrainz about the track's artist, once a track; when its genres fit a family, chooses again. */
 async function lookUpThenPick($: EngineInterface, track: Track): Promise<void> {
-  const isrc = track.isrc ?? ''
-  if (askedRecordings.has(isrc)) return
-  if (isrc) askedRecordings.add(isrc)
+  if (askedTracks.has(track.id)) return
+  askedTracks.add(track.id)
   let found: Lookup
   try {
     found = await lookUpGenre($, track)
   } catch (error) {
     // Not given up on: the artist's next track asks again.
-    askedRecordings.delete(isrc)
+    askedTracks.delete(track.id)
     genreNote = `last lookup failed: ${error instanceof Error ? error.message : 'unknown error'}; the artist's next track asks again`
     return
   }
@@ -431,10 +430,10 @@ function lookupNote(found: Lookup): string {
   switch (found.kind) {
     case 'found':
       return found.theme === null ? "the artist's genres on MusicBrainz fit no scene" : `${THEMES[found.theme].name}, by the artist's genres on MusicBrainz`
-    case 'no-isrc':
-      return 'Spotify gave the track no ISRC'
     case 'unknown':
-      return "MusicBrainz does not know the recording; the artist's next track asks again"
+      return "MusicBrainz knows neither the artist's Spotify page nor the recording"
+    case 'no-id':
+      return 'Spotify gave neither an artist ID nor an ISRC'
   }
 }
 

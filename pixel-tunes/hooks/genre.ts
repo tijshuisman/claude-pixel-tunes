@@ -6,7 +6,8 @@ import { THEME_IDS } from './themes'
 // Which scene fits what plays. Spotify gives no genres any more, so the choice
 // is made here, from lists kept on this Mac: the person's own picks per
 // playlist and per artist, then words in the playlist's name. Only when the
-// person opts in does a track's ISRC go to MusicBrainz, for its artist's genres.
+// person opts in does MusicBrainz hear of the artist (its Spotify ID, else the
+// track's ISRC), for its genres.
 
 /** A name as the lists keep it: without accents, lower case, one kind of apostrophe and of space. */
 export function nameKey(name: string): string {
@@ -190,41 +191,76 @@ function scrub(error: unknown): string {
 type Credit = { name?: string; artist?: { id?: string; name?: string } }
 type Genre = { name?: string; count?: number }
 
-/**
- * What a lookup came to: `found` once the artist's genres were read, now or
- * before, with the family they fit (null when none does); `no-isrc` when
- * Spotify gave the track none; `unknown` when MusicBrainz does not know it.
- */
-export type Lookup = { kind: 'found'; theme: ThemeId | null } | { kind: 'no-isrc' } | { kind: 'unknown' }
+const MBID = /^[0-9a-f-]{36}$/
 
-/**
- * Looks up the family of a track's artist at MusicBrainz, through the
- * track's ISRC, never its name (a band named after a common word can turn
- * out to be a composer), and keeps what the artist's genres fit in the
- * store, so each artist is asked about once. A recording MusicBrainz does
- * not know says nothing of its artist: then nothing is kept. Rejects when
- * MusicBrainz cannot be reached.
- */
-export async function lookUpGenre($: EngineInterface, track: Track): Promise<Lookup> {
-  const isrc = track.isrc?.toUpperCase() ?? ''
-  const keys = artistsOf(track).map(nameKey)
-  if (!/^[A-Z]{2}[A-Z0-9]{3}\d{7}$/.test(isrc)) return { kind: 'no-isrc' }
-  if (keys.length === 0) return { kind: 'unknown' }
-  const cache = await genreCache($)
-  const known = keys.find(key => key in cache)
-  if (known !== undefined) return { kind: 'found', theme: cache[known] ?? null }
+// What MusicBrainz did not know this session, an artist's Spotify page or an
+// ISRC: not asked again until the next. It says nothing of the artist's genres.
+const unknown = new Set<string>()
 
+/** A MusicBrainz artist, and the name key its genres are kept under. */
+type Found = { id: string; key: string }
+
+/** The MusicBrainz artist linked to a Spotify artist page; null when MusicBrainz knows none. */
+async function bySpotifyPage($: EngineInterface, spotifyId: string, key: string): Promise<Found | null> {
+  const page = `https://open.spotify.com/artist/${spotifyId}`
+  if (unknown.has(page)) return null
+  const url = (await musicbrainz($, `/url?resource=${encodeURIComponent(page)}&inc=artist-rels&fmt=json`)) as {
+    relations?: { artist?: { id?: string } }[]
+  } | null
+  const id = (url?.relations ?? []).map(r => r.artist?.id ?? '').find(x => MBID.test(x))
+  if (id) return { id, key }
+  unknown.add(page)
+  return null
+}
+
+/** The MusicBrainz artist credited on a recording, by its ISRC; null when MusicBrainz knows none. */
+async function byIsrc($: EngineInterface, isrc: string, keys: readonly string[]): Promise<Found | null> {
+  if (unknown.has(isrc)) return null
   const found = (await musicbrainz($, `/isrc/${isrc}?inc=artist-credits&fmt=json`)) as { recordings?: { 'artist-credit'?: Credit[] }[] } | null
   const credits = (found?.recordings ?? []).flatMap(r => r['artist-credit'] ?? [])
   const credit = credits.find(c => keys.includes(nameKey(c.artist?.name ?? c.name ?? ''))) ?? credits[0]
   const id = credit?.artist?.id ?? ''
-  if (!/^[0-9a-f-]{36}$/.test(id)) return { kind: 'unknown' }
-  const artist = (await musicbrainz($, `/artist/${id}?inc=genres+tags&fmt=json`)) as { genres?: Genre[]; tags?: Genre[] } | null
+  if (!MBID.test(id)) {
+    unknown.add(isrc)
+    return null
+  }
+  const creditKey = nameKey(credit?.artist?.name ?? credit?.name ?? '')
+  return { id, key: keys.includes(creditKey) ? creditKey : (keys[0] ?? creditKey) }
+}
+
+/**
+ * What a lookup came to: `found` once the artist's genres were read, now or
+ * before, with the family they fit (null when none does); `unknown` when
+ * MusicBrainz knows neither the artist's Spotify page nor the recording;
+ * `no-id` when Spotify gave neither an artist ID nor an ISRC.
+ */
+export type Lookup = { kind: 'found'; theme: ThemeId | null } | { kind: 'unknown' } | { kind: 'no-id' }
+
+/**
+ * Looks up the family of a track's artist at MusicBrainz: by the artist's
+ * Spotify page, else by the track's ISRC, never by name (a band named after a
+ * common word can turn out to be a composer). What the artist's genres fit is
+ * kept in the store, so each artist is asked about once; what MusicBrainz
+ * does not know is only not asked again this session. Rejects when
+ * MusicBrainz cannot be reached.
+ */
+export async function lookUpGenre($: EngineInterface, track: Track): Promise<Lookup> {
+  const keys = artistsOf(track).map(nameKey)
+  const spotifyId = track.artistIds?.[0] ?? ''
+  const isrc = track.isrc?.toUpperCase() ?? ''
+  const hasSpotifyId = /^[A-Za-z0-9]{22}$/.test(spotifyId)
+  const hasIsrc = /^[A-Z]{2}[A-Z0-9]{3}\d{7}$/.test(isrc)
+  if (keys.length === 0 || (!hasSpotifyId && !hasIsrc)) return { kind: 'no-id' }
+  const cache = await genreCache($)
+  const known = keys.find(key => key in cache)
+  if (known !== undefined) return { kind: 'found', theme: cache[known] ?? null }
+
+  const found = (hasSpotifyId ? await bySpotifyPage($, spotifyId, keys[0] ?? '') : null) ?? (hasIsrc ? await byIsrc($, isrc, keys) : null)
+  if (!found) return { kind: 'unknown' }
+  const artist = (await musicbrainz($, `/artist/${found.id}?inc=genres+tags&fmt=json`)) as { genres?: Genre[]; tags?: Genre[] } | null
   if (!artist) return { kind: 'unknown' }
   const listed = artist.genres?.length ? artist.genres : (artist.tags ?? [])
   const theme = themeOfGenres(listed.flatMap(g => (typeof g.name === 'string' ? [{ name: g.name, count: g.count ?? 0 }] : [])))
-  const creditKey = nameKey(credit?.artist?.name ?? credit?.name ?? '')
-  const key = keys.includes(creditKey) ? creditKey : (keys[0] ?? creditKey)
-  await $.store.set(GENRES, { ...(await genreCache($)), [key]: theme })
+  await $.store.set(GENRES, { ...(await genreCache($)), [found.key]: theme })
   return { kind: 'found', theme }
 }

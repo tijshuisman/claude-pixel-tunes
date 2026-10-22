@@ -89,6 +89,8 @@ type MusicBrainz = {
   recordings: Record<string, { id: string; name: string }>
   /** Per artist id, its genres with their votes. */
   genres: Record<string, { name: string; count: number }[]>
+  /** Per Spotify artist page, the artist MusicBrainz links to it. */
+  spotifyPages?: Record<string, { id: string; name: string }>
   /** Unreachable: every request is refused, its address (and so the ISRC) in the reason. */
   isDown?: boolean
 }
@@ -150,6 +152,9 @@ function fakeSpotify(
       const [, , , kind, id] = url.pathname.split('/')
       const artist = kind === 'isrc' ? start.musicbrainz?.recordings[id ?? ''] : undefined
       if (artist) return answer(200, { isrc: id, recordings: [{ id: 'rec', 'artist-credit': [{ name: artist.name, artist }] }] })
+      const page = url.searchParams.get('resource') ?? ''
+      const linked = kind === 'url' ? start.musicbrainz?.spotifyPages?.[page] : undefined
+      if (linked) return answer(200, { resource: page, relations: [{ type: 'free streaming', 'target-type': 'artist', artist: linked }] })
       const genres = kind === 'artist' ? start.musicbrainz?.genres[id ?? ''] : undefined
       if (genres) return answer(200, { id, genres, tags: [{ name: 'seen live', count: 9 }] })
       return answer(404, { error: 'Not Found' })
@@ -889,12 +894,30 @@ test('with opt-in, Pixel Tunes looks up the genre by the ISRC, once per artist',
   await ui.unmount()
 })
 
+test('without an ISRC, MusicBrainz finds the artist by its Spotify page', { options: { genre_lookup: true } }, async ($, on) => {
+  const bigThief = { id: '7b2c1e6a-0e8f-4d1c-9a51-2f3e8c0d4b11', name: 'Big Thief' }
+  const page = 'https://open.spotify.com/artist/BigThief00000000000000'
+  // What Spotify gives a development app: the artist's ID, but no ISRC.
+  const current = { ...song('bt', 'Not', ['Big Thief']), artists: [{ name: 'Big Thief', id: 'BigThief00000000000000' }] }
+  const { clock, spotify, ui, shows } = await connectedPane($, on, { current, musicbrainz: { ...MUSICBRAINZ, spotifyPages: { [page]: bigThief } } })
+  await clock.advance(5_000)
+  expect(await shows()).toContain('Pixel-art campfire')
+  const asked = spotify.musicbrainz().map(c => new URL(c.url))
+  expect(asked.map(u => u.pathname)).toEqual(['/ws/2/url', `/ws/2/artist/${bigThief.id}`])
+  expect(asked[0]?.searchParams.get('resource')).toBe(page)
+  // The model reads /tunes debug: never the artist's ID.
+  const said = (await $.command.run({ command: 'tunes', args: 'debug' })).text ?? ''
+  expect(said).toContain("last lookup: Campfire, by the artist's genres on MusicBrainz")
+  expect(said).not.toContain('BigThief0')
+  await ui.unmount()
+})
+
 test('a recording MusicBrainz does not know leaves its artist open for the next track', { options: { genre_lookup: true } }, async ($, on) => {
   const { clock, spotify, ui, shows } = await connectedPane($, on, { current: song('bt0', 'Masterpiece', ['Big Thief'], 'USUM71600009'), musicbrainz: MUSICBRAINZ })
   const debug = async () => (await $.command.run({ command: 'tunes', args: 'debug' })).text ?? ''
   await clock.advance(5_000)
   expect(await shows()).toContain('Pixel-art night drive')
-  expect(await debug()).toContain('Genre lookup: on · last lookup: MusicBrainz does not know the recording')
+  expect(await debug()).toContain("Genre lookup: on · last lookup: MusicBrainz knows neither the artist's Spotify page nor the recording")
 
   // MusicBrainz knows the artist's next track: now its genres choose.
   spotify.play(song('bt', 'Not', ['Big Thief'], 'USUM71900001'))

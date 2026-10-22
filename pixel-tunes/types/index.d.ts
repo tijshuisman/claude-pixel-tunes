@@ -20,6 +20,8 @@ export type Track = {
   imageUrl?: string
   /** Each artist on its own, for choosing the scene; absent in the demo. */
   artists?: string[]
+  /** The Spotify ID of each of `artists`, in the same order ('' where Spotify gave none), for the opt-in genre lookup. */
+  artistIds?: string[]
   /** The recording's ISRC, for the opt-in genre lookup. */
   isrc?: string
 }
