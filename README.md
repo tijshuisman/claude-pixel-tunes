@@ -90,6 +90,20 @@ In the desktop app, where `/plugin` does not run: click **+** next to the prompt
 
 Then run `/tunes` to open the pane, and click **Connect Spotify**. Your browser opens Spotify's login; after you agree, the pane connects. If that page cannot reach Pixel Tunes, paste the address you land on into the pane.
 
+## Update
+
+By default, Pixel Tunes doesn't update by itself. To update, run this in a shell:
+
+```
+claude plugin update pixel-tunes@claude-pixel-tunes
+```
+
+Or, at the prompt of a terminal session, run `/plugin`, open Pixel Tunes on the **Installed** tab and select **Update now**.
+
+To update automatically, turn on auto-update once, in a terminal session: run `/plugin`, go to the **Marketplaces** tab, pick `claude-pixel-tunes` and select **Enable auto-update**.
+
+The new version loads in your next session, in the terminal and in the desktop app.
+
 ## Use
 
 | Command | |
