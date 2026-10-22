@@ -1,7 +1,7 @@
 {
   "name": "pixel-tunes",
   "displayName": "Pixel Tunes",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "description": "A pixel-art Spotify player in a pane next to your chat, with a scene that fits the music",
   "author": {
     "name": "Tijs Huisman",
