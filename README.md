@@ -2,7 +2,7 @@
 
 A [Claude Code mod](https://code.claude.com/docs/en/plugins/mods/overview) that puts a pixel-art Spotify player in a pane next to your chat. The scene on top changes with the music that is playing.
 
-<p align="center"><img src="docs/scenes/nightdrive.svg" width="464" alt="Pixel-art night drive: a setting sun behind the city, a neon grid and a car"></p>
+<p align="center"><img src="docs/pane.gif" width="281" alt="The Pixel Tunes pane: a pixel-art night drive over Positif by Mr. Oizo, with its cover, the progress, the controls and the queue"></p>
 
 ## Scenes
 
