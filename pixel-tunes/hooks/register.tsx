@@ -72,13 +72,13 @@ const CELL_PX = 8
 
 /**
  * How much larger than its base size the art is drawn in a pane `columns` wide:
- * the scene's art pixels in steps of half a CSS pixel, from two, so on a retina
- * screen each stays a whole number of screen pixels.
+ * the scene's art pixels in steps of half a CSS pixel, from one and a half, so on
+ * a retina screen each stays a whole number of screen pixels.
  */
 function zoomFor(columns: number): number {
-  const room = columns * CELL_PX - 16
+  const room = columns * CELL_PX
   const perArtPixel = Math.floor((2 * room) / (SIZE.scene.width / 2)) / 2
-  return Math.min(6, Math.max(2, perArtPixel)) / 2
+  return Math.min(6, Math.max(1.5, perArtPixel)) / 2
 }
 
 /** The pixel heading over each view. */
@@ -1042,6 +1042,8 @@ export const register: Register = (on, options) => {
 
     // The art grows with the pane.
     const zoom = zoomFor(paneColumns)
+    // A narrow pane puts the volume under the device and draws its rows closer together.
+    const isNarrow = paneColumns < 36
     const sized = (size: { width: number; height: number }) => ({ width: Math.round(size.width * zoom), height: Math.round(size.height * zoom) })
 
     return (
@@ -1069,7 +1071,7 @@ export const register: Register = (on, options) => {
           <Svg source={progress(atNow)} alt="Track progress" {...sized(SIZE.progress)} isInteractive />
         </Box>
 
-        <Box flexDirection="row" justifyContent="center" gap="xs" paddingY="sm">
+        <Box flexDirection="row" justifyContent="center" paddingY="sm" {...(isNarrow ? {} : { gap: 'xs' as const })}>
           <Button key="shuffle" label={ICON.shuffle} dimColor={!p.shuffle} onPress={() => quietly(act($, 'shuffle'))} />
           <Button key="prev" label={ICON.prev} onPress={() => quietly(act($, 'prev'))} />
           <Button key="play" label={p.isPlaying ? ICON.pause : ICON.play} variant="primary" onPress={() => quietly(act($, 'toggle'))} />
@@ -1085,17 +1087,21 @@ export const register: Register = (on, options) => {
 
         <Box flexDirection="column" paddingX="sm" gap="sm">
           <Box flexDirection="column" gap="xs">
-            <Box flexDirection="row" alignItems="center" gap="xs">
-              {heading('ON', '#7d68a8', 2)}
-              <Button key="device" plain label={`${p.device || 'Choose a device'} ▾`} onPress={() => quietly(togglePicker($))} />
-              <Box flexGrow={1} />
-              {heading('VOL', '#7d68a8', 2)}
-              <Button key="softer" label="−" plain onPress={() => quietly(act($, 'softer'))} />
-              <Text color={CYAN} mono>
-                {'▮'.repeat(bars)}
-                <Text color="#2a1452">{'▮'.repeat(10 - bars)}</Text>
-              </Text>
-              <Button key="louder" label="+" plain onPress={() => quietly(act($, 'louder'))} />
+            <Box flexDirection={isNarrow ? 'column' : 'row'} alignItems={isNarrow ? 'flex-start' : 'center'} gap="xs">
+              <Box flexDirection="row" alignItems="center" gap="xs" flexShrink={1} minWidth={0}>
+                {heading('ON', '#7d68a8', 2)}
+                <Button key="device" plain label={`${p.device || 'Choose a device'} ▾`} onPress={() => quietly(togglePicker($))} />
+              </Box>
+              {!isNarrow && <Box flexGrow={1} />}
+              <Box flexDirection="row" alignItems="center" gap="xs">
+                {heading('VOL', '#7d68a8', 2)}
+                <Button key="softer" label="−" plain onPress={() => quietly(act($, 'softer'))} />
+                <Text color={CYAN} mono>
+                  {'▮'.repeat(bars)}
+                  <Text color="#2a1452">{'▮'.repeat(10 - bars)}</Text>
+                </Text>
+                <Button key="louder" label="+" plain onPress={() => quietly(act($, 'louder'))} />
+              </Box>
             </Box>
 
             <Box flexDirection="row" alignItems="center" gap="xs">
@@ -1200,7 +1206,7 @@ export const register: Register = (on, options) => {
           )}
 
           {isLive && (
-            <Box flexDirection="row" flexWrap="wrap" gap="sm">
+            <Box flexDirection="row" flexWrap="wrap" gap={isNarrow ? 'xs' : 'sm'}>
               {VIEWS.map(([view, name]) => (
                 <Box flexDirection="column" gap="xs">
                   {view === shown ? (
@@ -1296,7 +1302,7 @@ export const register: Register = (on, options) => {
           )}
 
           {isLive && (
-            <Box flexDirection="row" alignItems="center" gap="xs">
+            <Box flexDirection="row" alignItems="center" gap="xs" flexWrap="wrap">
               <Text color="#7d68a8" size="caption">
                 Music via Spotify · {acct.name}
               </Text>

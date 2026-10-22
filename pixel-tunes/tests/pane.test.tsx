@@ -332,7 +332,7 @@ test('in a wider pane the art grows in whole retina pixels', async ($, on) => {
   fakeSpotify(on)
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
 
-  for (const [columns, width] of [[30, 232], [40, 290], [60, 464]] as const) {
+  for (const [columns, width] of [[24, 174], [30, 232], [40, 290], [60, 464]] as const) {
     const ui = await $.ui.mount({ ...PANE, surface: 'desktop', props: { ...PANE.props, bodyColumns: columns } })
     const [scene, cover, strip] = await ui.findAll({ type: 'Svg' })
     expect(scene?.props.width).toBe(width)
