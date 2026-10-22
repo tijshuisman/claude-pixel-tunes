@@ -165,6 +165,8 @@ let artworkTried = ''
 let artworkNote = 'not tried yet'
 // The pane's width in cells as last drawn (for `/tunes debug`).
 let paneColumns = 0
+// When the pane last drew the progress, which counts on by itself from there.
+let progressDrawnAt = 0
 // Whether the person opted in to MusicBrainz (the genre_lookup option).
 let genreLookup = false
 // Playlist names by URI, asked of Spotify once a session; null when it gives none.
@@ -255,9 +257,15 @@ async function poll($: EngineInterface): Promise<void> {
     }
     // Pixel Tunes runs in every session: with the pane closed, look once a minute
     // (and as the track ends, so the spinner names the next one).
-    const isOpen = (await $.ui.panes()).some(pane => pane.id === PANE)
+    const pane = (await $.ui.panes()).find(x => x.id === PANE)
+    const isOpen = pane !== undefined
     if (next.track && next.isPlaying) wait = Math.min(isOpen ? 5_000 : 60_000, next.track.durationMs - next.positionMs + 1_000)
     else wait = isOpen ? 10_000 : 60_000
+    // The progress counts on from when its frame loads, and the desktop may load that
+    // frame again from the last drawing (after another session was in view): while
+    // music plays, each look draws it anew, unless something just did or the person
+    // is typing in the pane.
+    if (pane && !pane.isFocused && next.isPlaying && now - progressDrawnAt >= 4_000) $.ui.invalidate('ui.render')
   } catch (error) {
     if (error instanceof SpotifyError && error.reason === 'invalid_grant') return signedOut($, 'Your Spotify access was revoked. Connect again.')
     pollFailed = true
@@ -871,6 +879,8 @@ export const register: Register = (on, options) => {
       return { text: track ? `♪ ${track.title} – ${track.artist}` : 'Nothing is playing.' }
     }
     const opened = await $.ui.open({ id: PANE, title: 'Pixel Tunes' })
+    // Closed, the pane looked once a minute: look now, and every few seconds from here.
+    if (await isConnected($)) schedulePoll($, 0)
     return { text: opened.isPlaced ? 'Pixel Tunes is open next to the chat.' : `Pixel Tunes is open, but waiting for room: ${opened.reason}` }
   })
 
@@ -930,6 +940,11 @@ export const register: Register = (on, options) => {
     const shown: View = isLive ? b.view : 'queue'
     const firstArtist = artistsOf(t)[0]
     const playlist = p.context?.startsWith('spotify:playlist:') ? p.context : undefined
+    // The progress counts on by itself from the moment its frame loads, so it starts from
+    // where the track is now, not from Spotify's last news, which may be minutes old.
+    const now = await $.clock.now()
+    const atNow: Playback = { ...p, positionMs: positionAt(p, now), at: now }
+    progressDrawnAt = now
     // Rows are cut to fit: a cell of the pane holds about one character of its
     // proportional text, so the + beside a track stays in view.
     paneColumns = e.props.bodyColumns
@@ -976,7 +991,7 @@ export const register: Register = (on, options) => {
               isInteractive
             />
           </Box>
-          <Svg source={progress(p)} alt="Track progress" width={SIZE.progress.width} height={SIZE.progress.height} isInteractive />
+          <Svg source={progress(atNow)} alt="Track progress" width={SIZE.progress.width} height={SIZE.progress.height} isInteractive />
         </Box>
 
         <Box flexDirection="row" justifyContent="center" gap="xs" paddingY="sm">

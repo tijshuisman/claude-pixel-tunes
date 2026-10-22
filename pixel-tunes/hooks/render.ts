@@ -3,7 +3,8 @@ import { BG, CYAN, H, LILAC, LOOP, PINK, S, W, add, fills, open, rect, rng } fro
 import { THEMES } from './themes'
 
 // Everything here is pure: playback in, SVG markup out. The markup animates
-// itself with SMIL, so the pane redraws only when the playback changes.
+// itself with SMIL, counting from the moment its frame loads; a frame cannot
+// tell the time, so `progress` gets the playback as of its drawing.
 // Track names never enter the markup as text: they are drawn as pixel paths.
 //
 // Sized for the desktop's docked pane (about 235 px wide): the scene's art

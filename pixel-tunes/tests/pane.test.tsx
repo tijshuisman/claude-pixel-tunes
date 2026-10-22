@@ -32,7 +32,10 @@ const PLAY_MUSIC = 'mcp__pixel-tunes__play_music'
 const CLIENT = { options: { spotify_client_id: 'test-client' } }
 
 // Nothing sits beneath the plugin: these hooks stand for the engine.
-function engine(on: On, { takesTools = true, store = {} }: { takesTools?: boolean; store?: Record<string, unknown> } = {}) {
+function engine(
+  on: On,
+  { takesTools = true, store = {}, isFocused = () => false }: { takesTools?: boolean; store?: Record<string, unknown>; isFocused?: () => boolean } = {},
+) {
   const tools: RegisteredToolSpec[] = []
   const opened: string[] = []
   mock.store(on, store)
@@ -46,7 +49,7 @@ function engine(on: On, { takesTools = true, store = {} }: { takesTools?: boolea
     opened.push(e.id)
     return { value: { isPlaced: true } }
   })
-  on('ui.panes', () => ({ value: [{ id: 'pixel-tunes', title: 'Pixel Tunes' }] }))
+  on('ui.panes', () => ({ value: [{ id: 'pixel-tunes', title: 'Pixel Tunes', isShown: true, isFocused: isFocused(), isPlaced: true }] }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   return { tools, opened }
 }
@@ -99,6 +102,8 @@ function fakeSpotify(
     image?: string
     current?: ReturnType<typeof track>
     context?: string
+    /** Where the track is when Spotify is asked, in ms; a minute in when not given. */
+    progress?: () => number
     /** Playlist names by id, for `GET /playlists/{id}`. */
     playlists?: Record<string, string>
     musicbrainz?: MusicBrainz
@@ -167,7 +172,7 @@ function fakeSpotify(
               device: { name: 'MacBook Pro', volume_percent: 70 },
               shuffle_state: false,
               repeat_state: 'off',
-              progress_ms: 60_000,
+              progress_ms: start.progress?.() ?? 60_000,
               is_playing: isPlaying,
               item: current,
               context: { uri: context },
@@ -349,6 +354,44 @@ test('a stored login resumes by itself and follows Spotify', async ($, on) => {
 
   await ui.press({ key: 'play' })
   expect(spotify.calls.some(c => c.method === 'PUT' && c.url.endsWith('/me/player/pause'))).toBe(true)
+  await ui.unmount()
+})
+
+/** Where a progress drawing's clock starts, in seconds: its frame counts on from there by itself. */
+const clockStart = (source: string) => Number(/ begin="-([\d.]+)s"/.exec(source)?.[1])
+
+test('the progress shows where the track is now, however long ago Spotify last had news', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  let isTyping = false
+  engine(on, { isFocused: () => isTyping })
+  // Spotify plays on in step with the clock, so no answer differs from what Pixel Tunes expects.
+  const spotify = fakeSpotify(on, { keychain: 'refresh-1', progress: () => 60_000 + clock.now() - 1_000_000 })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(30_300)
+
+  // Opened half a minute after the last news, the clock starts at 1:30, not at 1:00.
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const progress = async () => String((await ui.findAll({ type: 'Svg' }))[3]?.props.source)
+  expect(clockStart(await progress())).toBe(90.3)
+
+  // The desktop may load the frame again from its last drawing (after another session was in view),
+  // so while music plays each look draws the pane anew: at 2:30 now, it is at most one look behind.
+  await clock.advance(60_000)
+  expect(clockStart(await progress())).toBeGreaterThanOrEqual(150.3 - 5)
+
+  // While the person types in the pane, it is left alone.
+  isTyping = true
+  const drawn = clockStart(await progress())
+  await clock.advance(30_000)
+  expect(clockStart(await progress())).toBe(drawn)
+  isTyping = false
+
+  // Opening the pane looks at Spotify right away, not at the next look (a minute on while it was closed).
+  const looks = () => spotify.calls.filter(c => c.url.includes('/v1/me/player?')).length
+  const before = looks()
+  await $.command.run({ command: 'tunes' })
+  await clock.advance(300)
+  expect(looks()).toBe(before + 1)
   await ui.unmount()
 })
 

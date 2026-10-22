@@ -28,7 +28,7 @@ export type RepeatMode = 'off' | 'context' | 'track'
 
 /**
  * What plays now. The position is a snapshot: `positionMs` as measured at
- * `at` (ms since the epoch), so a drawing never needs the clock.
+ * `at` (ms since the epoch); while it plays, the track moves on from there.
  */
 export type Playback = {
   track: Track | null
