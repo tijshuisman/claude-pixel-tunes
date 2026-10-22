@@ -36,6 +36,7 @@ import {
   transfer,
   upcoming,
 } from './spotify'
+import { sceneCells } from './raster'
 import { THEMES, THEME_IDS } from './themes'
 
 const PANE = 'pixel-tunes'
@@ -80,6 +81,15 @@ function zoomFor(columns: number): number {
   const room = columns * CELL_PX
   const perArtPixel = Math.floor((2 * room) / (SIZE.scene.width / 2)) / 2
   return Math.min(6, Math.max(1.5, perArtPixel)) / 2
+}
+
+/** The progress as a line of text for the terminal: time, a bar, the length. */
+function progressLine(p: Playback, room: number): string {
+  const length = p.track?.durationMs ?? 0
+  const at = Math.min(length, p.positionMs)
+  const width = Math.max(6, Math.min(40, room - 12))
+  const done = length > 0 ? Math.round((at / length) * width) : 0
+  return `${fmt(at)} ${'━'.repeat(done)}${'─'.repeat(width - done)} ${fmt(length)}`
 }
 
 /** The pixel heading over each view. */
@@ -975,23 +985,15 @@ export const register: Register = (on, options) => {
     const shownTheme = th.manual ?? th.auto
     const t = p.track
 
-    if (e.surface === 'terminal') {
-      const { Box, Text } = $.ui.resolve(e)
-      return (
-        <Box flexDirection="column">
-          <Text color={PINK} bold>
-            PIXEL TUNES
-          </Text>
-          <Text>{t ? `${p.isPlaying ? ICON.play : ICON.pause} ${t.title} – ${t.artist}` : 'Nothing is playing.'}</Text>
-          <Text dimColor>Scene: {THEMES[shownTheme].name}</Text>
-          {line && <Text color="#ff7aa2">{line}</Text>}
-          <Text dimColor>The pixel scene draws in the desktop app; a terminal version will follow.</Text>
-        </Box>
-      )
-    }
-
+    // The terminal draws no Svg: there the scene is a Raster of half blocks, and the
+    // title, the artist and the progress are text.
+    const isTerminal = e.surface === 'terminal'
     const elements = $.ui.resolve(e)
-    const { Box, Button, Link, Svg, Text } = elements
+    const { Box, Button, Link, Text } = elements
+    const Svg = !isTerminal && 'Svg' in elements ? elements.Svg : undefined
+    const Raster = 'Raster' in elements ? elements.Raster : undefined
+    // In the terminal the controls answer a key while the pane has the keyboard.
+    const key = (letter: string) => (isTerminal ? { hotkey: letter } : {})
     const Input = 'Input' in elements ? elements.Input : undefined
     const isLiked = t !== null && saved.includes(t.id)
     const isLive = acct.status === 'connected'
@@ -1019,6 +1021,12 @@ export const register: Register = (on, options) => {
 
     // A heading in the pixel font of the title above, so the lower half speaks its style.
     const heading = (text: string, color: string, p = 1) => {
+      if (!Svg)
+        return (
+          <Text color={color} bold>
+            {text}
+          </Text>
+        )
       const drawn = pixelLabel(text, color, p)
       return <Svg source={drawn.source} alt={text} width={drawn.width} height={drawn.height} />
     }
@@ -1049,6 +1057,23 @@ export const register: Register = (on, options) => {
 
     return (
       <Box flexDirection="column" backgroundColor={BG} paddingBottom="sm">
+        {isTerminal || !Svg ? (
+          <Box flexDirection="column" paddingX="sm">
+            {Raster && (() => {
+              const drawn = sceneCells(shownTheme, paneColumns)
+              return <Raster key="scene" columns={drawn.columns} rows={drawn.rows} cells={drawn.cells} />
+            })()}
+            <Box flexDirection="row" gap="xs" paddingTop="xs">
+              <Text color={PINK} bold>
+                {t ? fit(t.title, Math.max(8, paneColumns - 6)) : 'Nothing playing'}
+              </Text>
+              {isLiked && <Text color={PINK}>{ICON.heart}</Text>}
+            </Box>
+            {t && <Text color={CYAN}>{fit(t.artist, Math.max(8, paneColumns - 4))}</Text>}
+            {t?.album && <Text color={LILAC}>{fit(t.album, Math.max(8, paneColumns - 4))}</Text>}
+            {t && <Text color={CYAN}>{progressLine(atNow, paneColumns - 4)}</Text>}
+          </Box>
+        ) : (
         <Box flexDirection="column" alignItems="center">
           <Svg
             source={scene(shownTheme, p.isPlaying)}
@@ -1071,19 +1096,21 @@ export const register: Register = (on, options) => {
           </Box>
           <Svg source={progress(atNow)} alt="Track progress" {...sized(SIZE.progress)} isInteractive />
         </Box>
+        )}
 
         <Box flexDirection="row" justifyContent="center" paddingY="sm" {...(isNarrow ? {} : { gap: 'xs' as const })}>
-          <Button key="shuffle" label={ICON.shuffle} dimColor={!p.shuffle} onPress={() => quietly(act($, 'shuffle'))} />
-          <Button key="prev" label={ICON.prev} onPress={() => quietly(act($, 'prev'))} />
-          <Button key="play" label={p.isPlaying ? ICON.pause : ICON.play} variant="primary" onPress={() => quietly(act($, 'toggle'))} />
-          <Button key="next" label={ICON.next} onPress={() => quietly(act($, 'next'))} />
+          <Button key="shuffle" {...key('s')} label={ICON.shuffle} dimColor={!p.shuffle} onPress={() => quietly(act($, 'shuffle'))} />
+          <Button key="prev" {...key('b')} label={ICON.prev} onPress={() => quietly(act($, 'prev'))} />
+          <Button key="play" {...key('p')} label={p.isPlaying ? ICON.pause : ICON.play} variant="primary" onPress={() => quietly(act($, 'toggle'))} />
+          <Button key="next" {...key('n')} label={ICON.next} onPress={() => quietly(act($, 'next'))} />
           <Button
             key="repeat"
+            {...key('r')}
             label={p.repeat === 'track' ? `${ICON.repeat}1` : ICON.repeat}
             dimColor={p.repeat === 'off'}
             onPress={() => quietly(act($, 'repeat'))}
           />
-          <Button key="like" label={isLiked ? ICON.heart : ICON.noHeart} onPress={() => quietly(like($))} />
+          <Button key="like" {...key('l')} label={isLiked ? ICON.heart : ICON.noHeart} onPress={() => quietly(like($))} />
         </Box>
 
         <Box flexDirection="column" paddingX="sm" gap="sm">

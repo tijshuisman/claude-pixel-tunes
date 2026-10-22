@@ -2,6 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { On, RegisteredToolSpec } from 'claude-code'
 
 import { themeOfGenres, themeOfName } from '../hooks/genre'
+import { scenePixels, sceneCells } from '../hooks/raster'
 import { glyphs, scene, strip } from '../hooks/render'
 import { toPlayback, toSearchItems } from '../hooks/spotify'
 import { THEMES, THEME_IDS } from '../hooks/themes'
@@ -535,15 +536,39 @@ test('the band stays as it was in the terminal, and while a survey holds it', as
   await survey.unmount()
 })
 
-test('the terminal gets a text version', async ($, on) => {
+test('the terminal gets the scene in half blocks and a player of text', async ($, on) => {
   mock.clock(on, { now: 0 })
   engine(on)
   fakeSpotify(on)
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
 
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await ui.find({ type: 'Text', text: /Nightcall – Kavinsky/ })).toBeDefined()
+  const raster = await ui.find({ type: 'Raster' })
+  // As wide as the pane, the middle of the scene: two art pixels to a cell, down.
+  expect(raster?.props.columns).toBe(30)
+  expect(raster?.props.rows).toBe(32)
+  expect(String(raster?.props.cells).length).toBe(Math.ceil((30 * 32 * 12) / 3) * 4)
+  expect(await ui.find({ type: 'Text', text: /^Nightcall$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^Kavinsky$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^1:37 ━+─+ 4:18$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /UP NEXT/ })).toBeDefined()
+
+  // The controls answer the same presses as on the desktop.
+  await ui.press({ key: 'next' })
+  expect(await ui.find({ type: 'Text', text: /^Odd Look$/ })).toBeDefined()
   await ui.unmount()
+})
+
+test('every scene turns into pixels of its own for the terminal', () => {
+  for (const id of THEME_IDS) {
+    const px = scenePixels(id)
+    expect(px.length).toBe(116 * 64)
+    // A drawing, not a blank: many colours, the scene's own.
+    expect(new Set(px).size).toBeGreaterThan(8)
+  }
+  expect(new Set(THEME_IDS.map(id => scenePixels(id).join(','))).size).toBe(THEME_IDS.length)
+  // A pane wider than the scene gets all of it.
+  expect(sceneCells('nightdrive', 200).columns).toBe(116)
 })
 
 for (const [image, isFetched] of [
