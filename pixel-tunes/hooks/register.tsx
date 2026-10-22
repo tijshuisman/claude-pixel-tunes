@@ -1021,7 +1021,9 @@ export const register: Register = (on, options) => {
     // Rows are cut to fit: a cell of the pane holds about one character of its
     // proportional text, so the + beside a track stays in view.
     paneColumns = e.props.bodyColumns
-    const room = Math.min(90, Math.max(20, Math.round(paneColumns * 1.1) - 4))
+    // How many characters a row's text may take. In the terminal a column is one
+    // character; on the desktop a cell holds about 1.1 of its proportional text.
+    const room = isTerminal ? Math.max(12, paneColumns - 4) : Math.min(90, Math.max(20, Math.round(paneColumns * 1.1) - 4))
 
     // A heading in the pixel font of the title above, so the lower half speaks its style.
     const heading = (text: string, color: string, p = 1) => {
@@ -1268,7 +1270,7 @@ export const register: Register = (on, options) => {
                 </Text>
               )}
               {upNext.map((track, k) => (
-                <Box flexDirection="row" alignItems="center" gap="sm">
+                <Box flexDirection="row" alignItems={isTerminal ? 'flex-start' : 'center'} gap="sm">
                   {heading(String(k + 1).padStart(2, '0'), PINK, 2)}
                   <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
                     <Button key={`q-${k}-${track.id}`} plain onPress={() => quietly(act($, { play: track.id }))}>
