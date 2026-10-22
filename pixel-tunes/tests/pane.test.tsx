@@ -344,9 +344,9 @@ test('in a wider pane the art grows in whole retina pixels', async ($, on) => {
     expect(scene?.props.width).toBe(width)
     // The cover and the strip together are as wide as the scene.
     expect(Number(cover?.props.width) + Number(strip?.props.width)).toBe(width)
-    // Above the scene as much purple as beside it.
-    const [spacer] = await ui.findAll({ type: 'Svg' })
-    expect(spacer?.props.height).toBe(Math.round((columns * 8.5 - width) / 2))
+    // Above the scene as much purple as beside it: its frame is taller, the drawing at the bottom.
+    expect(scene?.props.height).toBe(Math.round((width * 64) / 116) + Math.min(32, Math.round((columns * 8.8 - width) / 2)))
+    expect(String(scene?.props.source)).toContain('xMidYMax')
     await ui.unmount()
   }
 })
