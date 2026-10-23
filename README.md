@@ -122,13 +122,26 @@ Pixel Tunes runs in every session, but your sessions share what Spotify tells th
 
 ## Options
 
-You set them when you install. To change them later, run `/config` in a terminal session.
+You fill in your Client ID when you install. To change an option later, edit `~/.claude/settings.json`. Pixel Tunes reads its options under `pluginConfigs`, in the `options` of `pixel-tunes@claude-pixel-tunes`. For example, to turn on the genre lookup:
+
+```json
+"pluginConfigs": {
+  "pixel-tunes@claude-pixel-tunes": {
+    "options": {
+      "spotify_client_id": "YOUR_CLIENT_ID",
+      "genre_lookup": true
+    }
+  }
+}
+```
+
+Keep the options that are already there, and add a comma between them. New sessions use the new values.
 
 | Option | Default | |
 |---|---|---|
 | `spotify_client_id` | none | The Client ID of your Spotify app |
 | `callback_port` | `8898` | The port in your redirect URI. Change both together. |
-| `genre_lookup` | off | Look up the playing artist's genres on MusicBrainz to pick the scene |
+| `genre_lookup` | off | Look up the playing artist's genres on MusicBrainz to pick the scene. Off by default for your privacy: see below. |
 | `terminal_images` | off | In iTerm2 3.5 or later, kitty or Ghostty: draw the scene as a sharp picture instead of coloured blocks |
 
 ## Privacy
@@ -137,7 +150,8 @@ You set them when you install. To change them later, run `/config` in a terminal
 - Your remembered scenes stay on your Mac too.
 - What plays now is kept on your Mac, so your sessions can share it. `/tunes logout` removes it.
 - Claude never sees titles, artists or album art. When it plays something for you, it only hears whether playback started.
-- With `genre_lookup` on, Pixel Tunes sends the playing artist's Spotify ID to [musicbrainz.org](https://musicbrainz.org), or the track's ISRC code if MusicBrainz doesn't know that ID. Otherwise it only talks to Spotify.
+- `genre_lookup` is off by default, so that nothing about what you play goes to a third party unless you choose so. Off, Pixel Tunes only talks to Spotify.
+- With `genre_lookup` on, Pixel Tunes sends the playing artist's Spotify ID to [musicbrainz.org](https://musicbrainz.org), or the track's ISRC code if MusicBrainz doesn't know that ID.
 
 ## Development
 
