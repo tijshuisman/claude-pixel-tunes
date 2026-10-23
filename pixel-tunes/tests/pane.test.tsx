@@ -4,7 +4,7 @@ import type { On, RegisteredToolSpec } from 'claude-code'
 import { themeOfGenres, themeOfName } from '../hooks/genre'
 import { scenePixels, sceneCells } from '../hooks/raster'
 import { coverArt, glyphs, scene, strip } from '../hooks/render'
-import { toPlayback, toSearchItems } from '../hooks/spotify'
+import { pickImage, toPlayback, toSearchItems } from '../hooks/spotify'
 import { THEMES, THEME_IDS } from '../hooks/themes'
 
 const PANE = {
@@ -133,6 +133,10 @@ function fakeSpotify(
     noDevice?: boolean
     soleDevice?: boolean
     image?: string
+    /** How long the cover is in base64; past 120,000 the pane has it shrunk. */
+    coverSize?: number
+    /** Shrinking the cover fails, as when sips cannot read it. */
+    cannotShrink?: boolean
     current?: ReturnType<typeof track>
     context?: string
     /** Where the track is when Spotify is asked, in ms; a minute in when not given. */
@@ -164,10 +168,11 @@ function fakeSpotify(
     }
     // The login's callback server: the browser came back with a code.
     if (command === '/usr/bin/python3') return ran(0, `code=the-code&state=${e.argv[4] ?? ''}\n`)
-    // The artwork, base64 (a JPEG starts /9j/).
+    // The artwork, base64 (a JPEG starts /9j/), shrunk to 30 KB when sips is asked.
     if (command === '/bin/sh') {
       downloads.push(e.argv[e.argv.length - 1] ?? '')
-      return ran(0, `/9j/${'A'.repeat(400)}\n`)
+      if (e.argv[2]?.includes('/usr/bin/sips')) return start.cannotShrink ? ran(1) : ran(0, `/9j/${'B'.repeat(30_000)}\n`)
+      return ran(0, `/9j/${'A'.repeat(start.coverSize ?? 400)}\n`)
     }
     return ran(0)
   })
@@ -655,6 +660,30 @@ for (const [image, isFetched] of [
     }
     await ui.unmount()
   })
+
+for (const canShrink of [true, false])
+  test(`a cover too large for the pane is ${canShrink ? 'shrunk to 300 px' : 'left out when it cannot be shrunk'}`, async ($, on) => {
+    const { spotify, ui } = await connectedPane($, on, { coverSize: 130_000, cannotShrink: !canShrink })
+    const cover = String((await art(ui))[1]?.props.source)
+    expect(cover.includes('<image href="data:image/jpeg;base64,/9j/B')).toBe(canShrink)
+    expect(cover).not.toContain('/9j/A')
+    // Fetched once more to shrink it, the address again an argument.
+    expect(spotify.downloads).toEqual([IMAGE, IMAGE])
+    const debug = (await $.command.run({ command: 'tunes', args: 'debug' })).text ?? ''
+    expect(debug).toContain(canShrink ? 'shrunk to 300 px (127 KB base64, now 29 KB)' : 'too large for the pane (127 KB base64), and shrinking it failed: exit 1')
+    expect(debug).toContain(canShrink ? 'In the pane: this cover' : 'In the pane: none')
+    expect(debug).not.toContain('/image/')
+    await ui.unmount()
+  })
+
+test('the cover nearest 300 px is chosen, one of unknown width last', () => {
+  expect(pickImage([{ url: 'w640', width: 640 }, { url: 'w300', width: 300 }, { url: 'w64', width: 64 }])).toBe('w300')
+  // Spotify lists the widest first; without widths that would be the one taken.
+  expect(pickImage([{ url: 'unknown', width: null }, { url: 'w640', width: 640 }, { url: 'w64', width: 64 }])).toBe('w64')
+  expect(pickImage([{ url: 'unknown' }, { url: 'w640', width: 640 }])).toBe('w640')
+  expect(pickImage([{ url: 'first', width: null }, { url: 'second', width: null }])).toBe('first')
+  expect(pickImage([])).toBeUndefined()
+})
 
 /** A connected session with the pane mounted on the desktop. */
 async function connectedPane(

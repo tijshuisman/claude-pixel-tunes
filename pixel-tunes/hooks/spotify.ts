@@ -331,10 +331,13 @@ type RawPlayback = {
   context?: { uri?: string } | null
 }
 
-/** The artwork nearest 300 px: sharp at 56 px on a retina screen, and small. */
+/**
+ * The artwork nearest 300 px: sharp at 56 px on a retina screen, and small. One of
+ * unknown width comes after any whose width is known: Spotify lists the widest first.
+ */
 export function pickImage(images: readonly RawImage[] | undefined): string | undefined {
   if (!images?.length) return undefined
-  const near = (i: RawImage) => Math.abs((i.width ?? 300) - 300)
+  const near = (i: RawImage) => (i.width ? Math.abs(i.width - 300) : Number.MAX_SAFE_INTEGER)
   return [...images].sort((a, b) => near(a) - near(b))[0]?.url
 }
 
@@ -543,9 +546,22 @@ export function originOf(url: string | undefined): string {
   }
 }
 
+// The largest cover the pane takes, in base64 characters: its Svg may be at most 131,072.
+const MAX_COVER = 120_000
+
+// The cover downloaded and shrunk to 300 px, about what a wide pane draws on a retina screen.
+const SHRINK = [
+  't=$(/usr/bin/mktemp -d) || exit 1',
+  `trap '/bin/rm -rf "$t"' EXIT`,
+  '/usr/bin/curl -fsSL --max-time 10 -o "$t/cover" "$1" &&',
+  '/usr/bin/sips -s format jpeg -s formatOptions 80 -Z 300 "$t/cover" --out "$t/small.jpg" >/dev/null &&',
+  '/usr/bin/base64 < "$t/small.jpg"',
+].join('\n')
+
 /**
  * The artwork as a data URI: the Svg may not fetch on its own. Only Spotify's
  * image hosts, over https; the shell gets the URL as an argument, never as code.
+ * A cover too large for the pane is fetched once more and shrunk.
  */
 export async function artworkDataUri($: EngineInterface, url: string): Promise<ArtworkResult> {
   let host = ''
@@ -563,7 +579,14 @@ export async function artworkDataUri($: EngineInterface, url: string): Promise<A
     )
     const data = run.stdout.replace(/\s+/g, '')
     if (data.length < 100) return { dataUri: null, note: `download failed: ${run.stderr.trim().slice(0, 200) || `exit ${run.exitCode}, no data`}` }
-    if (data.length > 120_000) return { dataUri: null, note: `cover too large for the pane (${Math.round(data.length / 1024)} KB base64)` }
+    if (data.length > MAX_COVER) {
+      const large = `${Math.round(data.length / 1024)} KB base64`
+      const shrunk = await $.process.run(['/bin/sh', '-c', SHRINK, 'pixel-tunes', url], { timeoutMs: 20_000 })
+      const small = shrunk.stdout.replace(/\s+/g, '')
+      if (small.length < 100 || small.length > MAX_COVER)
+        return { dataUri: null, note: `cover too large for the pane (${large}), and shrinking it failed: ${shrunk.stderr.trim().slice(0, 200) || `exit ${shrunk.exitCode}`}` }
+      return { dataUri: `data:image/jpeg;base64,${small}`, note: `fetched from ${host} and shrunk to 300 px (${large}, now ${Math.round(small.length / 1024)} KB)` }
+    }
     const mime = data.startsWith('iVBOR') ? 'image/png' : data.startsWith('UklGR') ? 'image/webp' : 'image/jpeg'
     return { dataUri: `data:${mime};base64,${data}`, note: `fetched from ${host} (${Math.round(data.length / 1024)} KB, ${mime})` }
   } catch (error) {
