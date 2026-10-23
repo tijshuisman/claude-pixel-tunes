@@ -140,6 +140,8 @@ function fakeSpotify(
     /** Playlist names by id, for `GET /playlists/{id}`. */
     playlists?: Record<string, string>
     musicbrainz?: MusicBrainz
+    /** The Web API asks for a break (429) or cannot be reached, until `trouble()` ends it. */
+    trouble?: 'busy' | 'down'
   } = {},
 ) {
   const calls: { method: string; url: string; body?: string; headers?: Record<string, string> }[] = []
@@ -150,6 +152,7 @@ function fakeSpotify(
   let current = start.current ?? track('4ZvOq2Y5k8qy3x1vFqJq8x', 'Nightcall', 'Kavinsky', start.image)
   let context = start.context ?? 'spotify:playlist:37i9dQZF1DX6GJXiuZRisr'
   let isPlaying = start.isPlaying ?? true
+  let trouble = start.trouble
 
   on('process.run', (_, e) => {
     const [command, sub] = e.argv
@@ -188,6 +191,8 @@ function fakeSpotify(
       if (genres) return answer(200, { id, genres, tags: [{ name: 'seen live', count: 9 }] })
       return answer(404, { error: 'Not Found' })
     }
+    if (url.host === 'api.spotify.com' && trouble === 'busy') return { value: { status: 429, ok: false, headers: { 'retry-after': '20' }, text: '' } }
+    if (url.host === 'api.spotify.com' && trouble === 'down') return { deny: `refused: ${e.url}` }
     if (method === 'GET' && url.pathname.startsWith('/v1/playlists/')) {
       const name = start.playlists?.[url.pathname.split('/')[3] ?? '']
       return name ? answer(200, { name }) : answer(404, { error: { status: 404, message: 'Resource not found' } })
@@ -292,6 +297,10 @@ function fakeSpotify(
       keychain = newest
     },
     revoke: (token: string) => revoked.add(token),
+    /** The Web API asks for a break, cannot be reached, or (given nothing) answers again. */
+    trouble: (next?: 'busy' | 'down') => {
+      trouble = next
+    },
     refreshedWith: () =>
       calls.filter(c => c.url === 'https://accounts.spotify.com/api/token').map(c => new URLSearchParams(c.body ?? '').get('refresh_token')),
   }
@@ -794,6 +803,43 @@ test('once Spotify answers again, its notice goes, also one from before a reload
   await clock.advance(10_000)
   expect(await other.find({ type: 'Text', text: 'This needs Spotify Premium.' })).toBeDefined()
   await other.unmount()
+})
+
+/** Whether the pane says Pixel Tunes waits out Spotify's break to connect. */
+const waitsOutBreak = async (ui: { find: (q: { type: 'Text'; text: RegExp }) => Promise<unknown> }) =>
+  (await ui.find({ type: 'Text', text: /connects once it is over/ })) !== undefined
+
+test('when Spotify asks for a break as the session starts, Pixel Tunes keeps the login and connects by itself', async ($, on) => {
+  const { clock, spotify, ui } = await connectedPane($, on, { trouble: 'busy' })
+  expect(await waitsOutBreak(ui)).toBe(true)
+  expect(await ui.find({ type: 'Text', text: /Could not connect/ })).toBeUndefined()
+
+  // While the break lasts, each try goes with the login that came through: no new token.
+  await clock.advance(30_000)
+  expect(await waitsOutBreak(ui)).toBe(true)
+  spotify.trouble()
+  await clock.advance(30_000)
+  expect(await waitsOutBreak(ui)).toBe(false)
+  expect(String((await art(ui))[2]?.props.alt)).toBe('Now playing Nightcall by Kavinsky')
+  expect(spotify.refreshedWith()).toEqual(['refresh-1'])
+  await ui.unmount()
+})
+
+test('a break as the hooks load again takes the place of the error of an earlier try', async ($, on) => {
+  const { clock, spotify, ui } = await connectedPane($, on, { trouble: 'down' })
+  expect(await ui.find({ type: 'Text', text: /Could not connect to Spotify again/ })).toBeDefined()
+
+  // An update loads the hooks again, the state kept; Spotify now asks for a break.
+  spotify.trouble('busy')
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(300)
+  expect(await ui.find({ type: 'Text', text: /Could not connect/ })).toBeUndefined()
+  expect(await waitsOutBreak(ui)).toBe(true)
+
+  spotify.trouble()
+  await clock.advance(30_000)
+  expect(String((await art(ui))[2]?.props.alt)).toBe('Now playing Nightcall by Kavinsky')
+  await ui.unmount()
 })
 
 test('Claude puts music on with play_music, and the model only hears that it worked', async ($, on) => {

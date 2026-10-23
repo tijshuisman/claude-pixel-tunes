@@ -20,6 +20,7 @@ import {
   forget,
   hasClientId,
   isSaved,
+  isSignedIn,
   listen,
   logout,
   myPlaylists,
@@ -189,6 +190,8 @@ function step(p: Playback, list: readonly Track[], action: Action, now: number, 
 // Module timers: a reload drops them and session.start starts them again.
 let demoTimer: Timer | undefined
 let pollTimer: Timer | undefined
+// The next try to connect, after Spotify asked for a break as the session started.
+let bootTimer: Timer | undefined
 // The terminal's scene moves while music plays: what the last drawing showed, and
 // the timer that draws its next frame.
 let sceneTimer: Timer | undefined
@@ -727,6 +730,7 @@ async function wakeSpotify($: EngineInterface): Promise<void> {
 
 async function connected($: EngineInterface, name: string): Promise<void> {
   demoTimer?.cancel()
+  bootTimer?.cancel()
   await update($, account, () => ({ status: 'connected', name }))
   await update($, artwork, () => null)
   await update($, picker, () => null)
@@ -792,6 +796,7 @@ async function signedOut($: EngineInterface, message: string): Promise<void> {
 
 async function disconnect($: EngineInterface): Promise<void> {
   pollTimer?.cancel()
+  bootTimer?.cancel()
   await logout($)
   await update($, account, () => ({ status: 'demo' }))
   await update($, artwork, () => null)
@@ -804,12 +809,27 @@ async function disconnect($: EngineInterface): Promise<void> {
   await pickTheme($)
 }
 
-/** At the session's start: a login kept in the Keychain resumes by itself. */
-async function boot($: EngineInterface): Promise<void> {
+// How long a start that Spotify asked for a break waits before it tries again. While
+// the break lasts, a try with a login sends nothing: `api` refuses it before it goes out.
+const BREAK_RETRY_MS = 30_000
+
+/**
+ * At the session's start: a login kept in the Keychain resumes by itself. Trying
+ * again after a break, a login that came through stands, with no new token.
+ */
+async function boot($: EngineInterface, isRetry = false): Promise<void> {
+  bootTimer?.cancel()
   try {
-    if (await resume($)) return connected($, await profile($))
+    if ((isRetry && isSignedIn()) || (await resume($))) return connected($, await profile($))
     if (await isConnected($)) await update($, account, () => ({ status: 'demo' }))
   } catch (error) {
+    // A break is not a lost login: no error to connect again over, but a notice and another try.
+    if (error instanceof SpotifyError && error.status === 429) {
+      await update($, account, a => (a.status === 'error' ? { status: 'demo' } : a))
+      await say($, 'Spotify asks for a break; Pixel Tunes connects once it is over.')
+      bootTimer = $.clock.after(BREAK_RETRY_MS, () => quietly(boot($, true)))
+      return
+    }
     await update($, account, () => ({
       status: 'error',
       message: `Could not connect to Spotify again: ${error instanceof Error ? error.message : 'unknown error'}`,
