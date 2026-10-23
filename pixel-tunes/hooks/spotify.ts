@@ -57,8 +57,25 @@ let tokens: Tokens | undefined
 let pending: { verifier: string; state: string } | undefined
 let refreshing: Promise<string> | undefined
 let blockedUntil = 0
+// How long Spotify last asked to wait, in seconds; 0 when it never did.
+let breakAsked = 0
+
+// Spotify may ask for a break of hours: as long as it asks, up to a day.
+const MAX_BREAK_S = 86_400
 
 export const isSignedIn = () => tokens !== undefined
+
+/** Until when Spotify asked for a break, and for how many seconds; null when it never did. */
+export function lastBreak(): { until: number; asked: number } | null {
+  return breakAsked ? { until: blockedUntil, asked: breakAsked } : null
+}
+
+/** A moment as a clock on the wall shows it, to the minute after: "14:32", or "tomorrow 14:32". */
+export function clockTime(ms: number, now: number): string {
+  const at = new Date(Math.ceil(ms / 60_000) * 60_000)
+  const time = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
+  return at.toDateString() === new Date(now).toDateString() ? time : `tomorrow ${time}`
+}
 
 function parse(text: string): unknown {
   try {
@@ -268,7 +285,9 @@ export function forget(): void {
 /* ── the Web API ──────────────────────────────────────────────────────── */
 
 async function api($: EngineInterface, method: string, path: string, body?: unknown): Promise<unknown> {
-  if ((await $.clock.now()) < blockedUntil) throw new SpotifyError(429, 'Spotify asks for a break; back in a moment.')
+  const now = await $.clock.now()
+  const onBreak = () => new SpotifyError(429, `Spotify asks for a break until ${clockTime(blockedUntil, now)}.`)
+  if (now < blockedUntil) throw onBreak()
   const send = async () =>
     $.http.fetch(`${API}${path}`, {
       method,
@@ -285,7 +304,9 @@ async function api($: EngineInterface, method: string, path: string, body?: unkn
   }
   if (res.status === 429) {
     const wait = Number(res.headers['retry-after'] ?? '10')
-    blockedUntil = (await $.clock.now()) + (Number.isFinite(wait) ? Math.min(wait, 600) : 10) * 1000
+    breakAsked = Number.isFinite(wait) && wait > 0 ? wait : 10
+    blockedUntil = now + Math.min(breakAsked, MAX_BREAK_S) * 1000
+    throw onBreak()
   }
   if (!res.ok) {
     const json = parse(res.text) as { error?: { message?: string; reason?: string } | string } | null

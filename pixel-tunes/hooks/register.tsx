@@ -12,6 +12,7 @@ import {
   artworkDataUri,
   beginLogin,
   cancelLogin,
+  clockTime,
   configure,
   control,
   devices,
@@ -21,6 +22,7 @@ import {
   hasClientId,
   isSaved,
   isSignedIn,
+  lastBreak,
   listen,
   logout,
   myPlaylists,
@@ -743,6 +745,8 @@ async function complete($: EngineInterface, params: URLSearchParams): Promise<vo
     await finishLogin($, params)
     await connected($, await profile($))
   } catch (error) {
+    // The login came through; Spotify only asks to wait before Pixel Tunes asks for more.
+    if (isBreak(error)) return waitOutBreak($, error)
     await update($, account, () => ({ status: 'error', message: error instanceof Error ? error.message : 'Could not connect.' }))
   }
 }
@@ -809,9 +813,28 @@ async function disconnect($: EngineInterface): Promise<void> {
   await pickTheme($)
 }
 
-// How long a start that Spotify asked for a break waits before it tries again. While
-// the break lasts, a try with a login sends nothing: `api` refuses it before it goes out.
+// How long a start that Spotify asked for a break waits at least before it tries again,
+// and otherwise until the break is over. While the break lasts, a try with a login
+// sends nothing: `api` refuses it before it goes out.
 const BREAK_RETRY_MS = 30_000
+
+// How the notice of a break ends: the pane then waits it out, with no Connect Spotify.
+const WAITS_OUT_BREAK = 'Pixel Tunes connects once it is over.'
+const isWaitingOutBreak = (text: string | null) => text?.endsWith(WAITS_OUT_BREAK) === true
+
+const isBreak = (error: unknown): error is SpotifyError => error instanceof SpotifyError && error.status === 429
+
+/**
+ * A break is not a lost login: no error to connect again over, but a notice that
+ * says until when, and another try with the login that came through.
+ */
+async function waitOutBreak($: EngineInterface, error: SpotifyError): Promise<void> {
+  await update($, account, a => (a.status === 'error' || a.status === 'connecting' ? { status: 'demo' } : a))
+  await say($, `${error.message} ${WAITS_OUT_BREAK}`)
+  const left = (lastBreak()?.until ?? 0) - (await $.clock.now())
+  bootTimer?.cancel()
+  bootTimer = $.clock.after(Math.max(BREAK_RETRY_MS, left + 1_000), () => quietly(boot($, true)))
+}
 
 /**
  * At the session's start: a login kept in the Keychain resumes by itself. Trying
@@ -823,13 +846,7 @@ async function boot($: EngineInterface, isRetry = false): Promise<void> {
     if ((isRetry && isSignedIn()) || (await resume($))) return connected($, await profile($))
     if (await isConnected($)) await update($, account, () => ({ status: 'demo' }))
   } catch (error) {
-    // A break is not a lost login: no error to connect again over, but a notice and another try.
-    if (error instanceof SpotifyError && error.status === 429) {
-      await update($, account, a => (a.status === 'error' ? { status: 'demo' } : a))
-      await say($, 'Spotify asks for a break; Pixel Tunes connects once it is over.')
-      bootTimer = $.clock.after(BREAK_RETRY_MS, () => quietly(boot($, true)))
-      return
-    }
+    if (isBreak(error)) return waitOutBreak($, error)
     await update($, account, () => ({
       status: 'error',
       message: `Could not connect to Spotify again: ${error instanceof Error ? error.message : 'unknown error'}`,
@@ -990,10 +1007,18 @@ export const register: Register = (on, options) => {
       if (track && acct.status === 'connected') await fetchArtwork($, track)
       const art = await read($, artwork)
       const shown = !art ? 'none' : art.url === track?.imageUrl ? `this cover (${Math.round(art.dataUri.length / 1024)} KB)` : 'a cover of an earlier track'
+      const pause = lastBreak()
+      const now = await $.clock.now()
+      const breakLine = !pause
+        ? 'none'
+        : pause.until > now
+          ? `until ${clockTime(pause.until, now)} (Spotify asked for ${pause.asked} s)`
+          : `none now (the last, of ${pause.asked} s, is over)`
       // The model reads this too: no title, artist or image address, only which server.
       return {
         text: [
           `Spotify: ${acct.status}`,
+          `Break: ${breakLine}`,
           `Track: ${!track ? 'none' : track.uri ? 'from Spotify (title and artist are in the pane)' : 'demo'}`,
           `Cover server: ${originOf(track?.imageUrl)}`,
           `Fetching: ${artworkNote}`,
@@ -1303,11 +1328,13 @@ export const register: Register = (on, options) => {
           {acct.status === 'demo' && (
             <Box flexDirection="column" gap="xs" paddingY="xs">
               <Text color={LILAC} size="footnote">
-                {hasClientId()
-                  ? 'This is demo data. Connect to control your own Spotify.'
-                  : 'This is demo data. To control your own Spotify, you need the Client ID of a Spotify app of your own.'}
+                {isWaitingOutBreak(line)
+                  ? 'This is demo data until then. Your login is kept: there is nothing to connect again.'
+                  : hasClientId()
+                    ? 'This is demo data. Connect to control your own Spotify.'
+                    : 'This is demo data. To control your own Spotify, you need the Client ID of a Spotify app of your own.'}
               </Text>
-              {hasClientId() ? (
+              {isWaitingOutBreak(line) ? null : hasClientId() ? (
                 <Button key="connect" label="Connect Spotify" onPress={() => soon($, 'connect')} />
               ) : (
                 <Link href={SETUP_URL} label="How to make one" />

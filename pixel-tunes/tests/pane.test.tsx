@@ -4,7 +4,7 @@ import type { On, RegisteredToolSpec } from 'claude-code'
 import { themeOfGenres, themeOfName } from '../hooks/genre'
 import { scenePixels, sceneCells } from '../hooks/raster'
 import { coverArt, glyphs, scene, strip } from '../hooks/render'
-import { pickImage, toPlayback, toSearchItems } from '../hooks/spotify'
+import { clockTime, pickImage, toPlayback, toSearchItems } from '../hooks/spotify'
 import { THEMES, THEME_IDS } from '../hooks/themes'
 
 const PANE = {
@@ -146,6 +146,8 @@ function fakeSpotify(
     musicbrainz?: MusicBrainz
     /** The Web API asks for a break (429) or cannot be reached, until `trouble()` ends it. */
     trouble?: 'busy' | 'down'
+    /** The seconds Spotify asks to wait in a break; 20 when not given. */
+    retryAfter?: string
   } = {},
 ) {
   const calls: { method: string; url: string; body?: string; headers?: Record<string, string> }[] = []
@@ -196,7 +198,7 @@ function fakeSpotify(
       if (genres) return answer(200, { id, genres, tags: [{ name: 'seen live', count: 9 }] })
       return answer(404, { error: 'Not Found' })
     }
-    if (url.host === 'api.spotify.com' && trouble === 'busy') return { value: { status: 429, ok: false, headers: { 'retry-after': '20' }, text: '' } }
+    if (url.host === 'api.spotify.com' && trouble === 'busy') return { value: { status: 429, ok: false, headers: { 'retry-after': start.retryAfter ?? '20' }, text: '' } }
     if (url.host === 'api.spotify.com' && trouble === 'down') return { deny: `refused: ${e.url}` }
     if (method === 'GET' && url.pathname.startsWith('/v1/playlists/')) {
       const name = start.playlists?.[url.pathname.split('/')[3] ?? '']
@@ -869,6 +871,65 @@ test('a break as the hooks load again takes the place of the error of an earlier
   await clock.advance(30_000)
   expect(String((await art(ui))[2]?.props.alt)).toBe('Now playing Nightcall by Kavinsky')
   await ui.unmount()
+})
+
+/** The requests that went to Spotify's Web API. */
+const webApi = (spotify: ReturnType<typeof fakeSpotify>) => spotify.calls.filter(c => new URL(c.url).host === 'api.spotify.com').length
+
+test('a break of an hour is waited out to its end, the pane saying until when and offering no Connect Spotify', CLIENT, async ($, on) => {
+  const { clock, spotify, ui } = await connectedPane($, on, { trouble: 'busy', retryAfter: '3600' })
+  const until = clockTime(1_000_000 + 3_600_000, 1_000_000)
+  expect(await ui.find({ type: 'Text', text: `Spotify asks for a break until ${until}. Pixel Tunes connects once it is over.` })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /Your login is kept/ })).toBeDefined()
+  expect(await ui.find({ key: 'connect' })).toBeUndefined()
+  expect((await $.command.run({ command: 'tunes', args: 'debug' })).text).toContain(`Break: until ${until} (Spotify asked for 3600 s)`)
+
+  // Spotify would answer again, but the hour is not over: nothing goes to it.
+  spotify.trouble()
+  const asked = webApi(spotify)
+  await clock.advance(30_000)
+  await clock.advance(30 * 60_000)
+  expect(webApi(spotify)).toBe(asked)
+  expect(await waitsOutBreak(ui)).toBe(true)
+
+  await clock.advance(30 * 60_000)
+  expect(await waitsOutBreak(ui)).toBe(false)
+  expect(String((await art(ui))[2]?.props.alt)).toBe('Now playing Nightcall by Kavinsky')
+  expect((await $.command.run({ command: 'tunes', args: 'debug' })).text).toContain('Break: none now (the last, of 3600 s, is over)')
+  await ui.unmount()
+})
+
+test('a break right after the login keeps that login and waits the break out', CLIENT, async ($, on) => {
+  const clock = mock.clock(on, { now: 0 })
+  engine(on)
+  const spotify = fakeSpotify(on, { trouble: 'busy' })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  await $.command.run({ command: 'tunes', args: 'login' })
+  await clock.advance(100)
+  await clock.advance(1_000)
+  await clock.advance(1_000)
+  expect(spotify.keychain()).toBe('refresh-2')
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await waitsOutBreak(ui)).toBe(true)
+  // No error, no Connect again: the login came through.
+  expect(await ui.find({ key: 'connect' })).toBeUndefined()
+  expect((await $.command.run({ command: 'tunes', args: 'debug' })).text).toContain('Spotify: demo')
+
+  spotify.trouble()
+  await clock.advance(30_000)
+  expect(String((await art(ui))[2]?.props.alt)).toBe('Now playing Nightcall by Kavinsky')
+  // With the token of that login: its own request for it (no refresh token), and no refresh.
+  expect(spotify.refreshedWith()).toEqual([null])
+  await ui.unmount()
+})
+
+test('the end of a break reads as a clock does, to the minute after', () => {
+  const now = new Date(2026, 9, 23, 13, 5).getTime()
+  expect(clockTime(new Date(2026, 9, 23, 14, 31, 20).getTime(), now)).toBe('14:32')
+  expect(clockTime(new Date(2026, 9, 23, 14, 32).getTime(), now)).toBe('14:32')
+  expect(clockTime(new Date(2026, 9, 24, 9, 4, 30).getTime(), now)).toBe('tomorrow 09:05')
 })
 
 test('Claude puts music on with play_music, and the model only hears that it worked', async ($, on) => {
