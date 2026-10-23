@@ -1,6 +1,6 @@
 import type { EngineInterface } from 'claude-code'
 
-import type { ThemeId, ThemeReason, Track } from '../types'
+import type { ThemeChoice, ThemeId, ThemeReason, Track } from '../types'
 import { THEME_IDS } from './themes'
 
 // Which scene fits what plays. Spotify gives no genres any more, so the choice
@@ -141,6 +141,27 @@ export async function themeFor(
     }
   }
   return { auto: 'nightdrive', reason: 'default', basis: '' }
+}
+
+/* ── Flat Eric ────────────────────────────────────────────────────────── */
+
+// Mr. Oizo brings Flat Eric along, his puppet from the Levi's ads: a scene
+// the list in the pane leaves out. Only the pane chooses it, never the rules,
+// so `/tunes debug`, which the model reads, cannot give the artist away.
+
+/** Mr. Oizo as the track credits him, also as a guest; undefined when he is not on it. */
+export function oizoOn(track: Track | null): string | undefined {
+  return artistsOf(track).find(name => /^mr\.? oizo$/.test(nameKey(name)))
+}
+
+/**
+ * The scene the pane shows: the person's pick; for Mr. Oizo, Flat Eric,
+ * unless a playlist or the artist was remembered with a scene; else what the
+ * rules chose.
+ */
+export function themeShown(t: ThemeChoice, track: Track | null): ThemeId {
+  if (t.manual !== null) return t.manual
+  return t.reason !== 'playlist' && t.reason !== 'artist' && oizoOn(track) !== undefined ? 'flateric' : t.auto
 }
 
 /* ── MusicBrainz, only when the person opted in ───────────────────────── */

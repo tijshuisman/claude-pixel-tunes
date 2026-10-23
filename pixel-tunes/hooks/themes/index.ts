@@ -3,6 +3,7 @@ import { campfire } from './campfire'
 import { citylights } from './citylights'
 import { dancefloor } from './dancefloor'
 import { dreampop } from './dreampop'
+import { flateric } from './flateric'
 import { nightdrive } from './nightdrive'
 import { psychedelic } from './psychedelic'
 
@@ -52,6 +53,11 @@ export const THEMES: Readonly<Record<ThemeId, Theme>> = {
     name: 'Dream Pop',
     alt: 'Pixel-art dream pop: a full moon over a mirroring lake, a slow aurora, mist over the water and reeds',
     scene: dreampop,
+  },
+  flateric: {
+    name: 'Flat Eric',
+    alt: 'Pixel-art flat eric: the yellow puppet in a gilded room, a sausage in his mouth, nodding to the beat beside a speaker and a bowl of sausages',
+    scene: flateric,
   },
 }
 

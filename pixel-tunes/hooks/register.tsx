@@ -3,7 +3,7 @@ import type { EngineInterface, Register, Timer, UiOpenResult } from 'claude-code
 
 import type { Browse, Item, Playback, RepeatMode, ThemeChoice, ThemeId, Track, View } from '../types'
 import { DEMO_QUEUE } from './demo'
-import { artistsOf, lookUpGenre, nameKey, remember, themeFor } from './genre'
+import { artistsOf, lookUpGenre, nameKey, oizoOn, remember, themeFor, themeShown } from './genre'
 import type { Lookup } from './genre'
 import { BG, CYAN, LILAC, PINK } from './pixel'
 import { SIZE, coverArt, fmt, pixelLabel, progress, scene, strip } from './render'
@@ -524,9 +524,10 @@ async function keep($: EngineInterface, list: 'artist' | 'playlist'): Promise<vo
   await pickTheme($)
 }
 
-/** Why the scene is what it is, in a line for the pane. */
-function because(t: ThemeChoice): string {
+/** Why the scene is what it is, in a line for the pane; `oizo` when he brought Flat Eric. */
+function because(t: ThemeChoice, oizo: string | undefined): string {
   if (t.manual !== null) return 'Your pick stays until you choose Automatic.'
+  if (oizo !== undefined) return `Automatic: ${oizo} brings Flat Eric.`
   switch (t.reason) {
     case 'playlist':
       return 'Automatic: remembered for this playlist.'
@@ -1024,6 +1025,7 @@ export const register: Register = (on, options) => {
           `Fetching: ${artworkNote}`,
           `In the pane: ${shown}`,
           `Pane width: ${paneColumns || 'not drawn yet'} columns`,
+          // What the rules chose, never Flat Eric: he would name the artist.
           `Scene: ${THEMES[th.manual ?? th.auto].name}`,
           `Genre lookup: ${genreLookup ? `on · ${genreNote}` : 'off (the genre_lookup option)'}`,
         ].join('\n'),
@@ -1093,8 +1095,9 @@ export const register: Register = (on, options) => {
     const line = await read($, notice)
     const b = await read($, browse)
     const th = await read($, theme)
-    const shownTheme = th.manual ?? th.auto
     const t = p.track
+    const autoTheme = themeShown({ ...th, manual: null }, t)
+    const shownTheme = th.manual ?? autoTheme
 
     // The terminal draws no Svg: there the scene is a Raster of half blocks, and the
     // title, the artist and the progress are text.
@@ -1277,7 +1280,7 @@ export const register: Register = (on, options) => {
               <Button
                 key="theme-auto"
                 plain
-                label={`${th.manual === null ? '●' : '○'} Automatic (${THEMES[th.auto].name})`}
+                label={`${th.manual === null ? '●' : '○'} Automatic (${THEMES[autoTheme].name})`}
                 onPress={() => quietly(pickManual($, null))}
               />
               {THEME_IDS.map(id => (
@@ -1289,7 +1292,7 @@ export const register: Register = (on, options) => {
                 />
               ))}
               <Text color={LILAC} size="footnote">
-                {because(th)}
+                {because(th, autoTheme === 'flateric' ? oizoOn(t) : undefined)}
               </Text>
               {th.manual !== null && firstArtist && (
                 <Button key="remember-artist" plain label="Remember for this artist" onPress={() => quietly(keep($, 'artist'))} />

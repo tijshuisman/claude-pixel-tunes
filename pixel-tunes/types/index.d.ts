@@ -95,8 +95,8 @@ export type Browse = {
   message: string | null
 }
 
-/** The scene's families, each with a scene of its own. */
-export type ThemeId = 'nightdrive' | 'campfire' | 'citylights' | 'dancefloor' | 'psychedelic' | 'dreampop'
+/** The scene's families, each with a scene of its own; and Flat Eric, for Mr. Oizo alone. */
+export type ThemeId = 'nightdrive' | 'campfire' | 'citylights' | 'dancefloor' | 'psychedelic' | 'dreampop' | 'flateric'
 
 /** The rule that chose the scene: a playlist or artist remembered, the playlist's name, MusicBrainz, or none. */
 export type ThemeReason = 'playlist' | 'artist' | 'playlistName' | 'musicbrainz' | 'default'

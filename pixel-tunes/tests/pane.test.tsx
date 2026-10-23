@@ -6,6 +6,10 @@ import { scenePixels, sceneCells } from '../hooks/raster'
 import { coverArt, glyphs, scene, strip } from '../hooks/render'
 import { clockTime, pickImage, toPlayback, toSearchItems } from '../hooks/spotify'
 import { THEMES, THEME_IDS } from '../hooks/themes'
+import type { ThemeId } from '../types'
+
+// Every scene there is: the families, and Flat Eric, who is not in the list.
+const SCENES = Object.keys(THEMES) as ThemeId[]
 
 const PANE = {
   plugin: 'pixel-tunes',
@@ -626,13 +630,13 @@ test('a terminal that draws pictures gets the scene as a sharp picture as wide a
 })
 
 test('every scene turns into pixels of its own for the terminal', () => {
-  for (const id of THEME_IDS) {
+  for (const id of SCENES) {
     const px = scenePixels(id)
     expect(px.length).toBe(116 * 64)
     // A drawing, not a blank: many colours, the scene's own.
     expect(new Set(px).size).toBeGreaterThan(8)
   }
-  expect(new Set(THEME_IDS.map(id => scenePixels(id).join(','))).size).toBe(THEME_IDS.length)
+  expect(new Set(SCENES.map(id => scenePixels(id).join(','))).size).toBe(SCENES.length)
   // A pane wider than the scene gets all of it.
   expect(sceneCells('nightdrive', 200).columns).toBe(116)
 })
@@ -1194,6 +1198,36 @@ test('a remembered playlist wins over the artist, and can be forgotten again', a
   await ui.unmount()
 })
 
+test('Mr. Oizo brings Flat Eric, also as a guest, and only a pick of your own goes before him', async ($, on) => {
+  const { clock, spotify, ui, shows, themeButton } = await connectedPane($, on, {
+    current: song('fb', 'Flat Beat', ['Mr. Oizo']),
+    context: 'spotify:playlist:folk123',
+    playlists: { folk123: 'Indie Folk Evenings' },
+  })
+  // He goes before the playlist's name.
+  expect(await shows()).toContain('Pixel-art flat eric')
+  expect(await themeButton()).toBe('Flat Eric ▾')
+  await ui.press({ key: 'theme' })
+  expect((await ui.find({ key: 'theme-auto' }))?.text).toBe('● Automatic (Flat Eric)')
+  expect(await ui.find({ type: 'Text', text: 'Automatic: Mr. Oizo brings Flat Eric.' })).toBeDefined()
+  // Flat Eric is not in the list to pick from, and the model does not hear of him.
+  expect(await ui.find({ key: 'theme-flateric' })).toBeUndefined()
+  const debug = (await $.command.run({ command: 'tunes', args: 'debug' })).text ?? ''
+  expect(debug).toContain('Scene: Campfire')
+  for (const giveaway of ['Flat Eric', 'Oizo']) expect(debug).not.toContain(giveaway)
+
+  spotify.play(song('ft', 'Feat', ['Someone Unknown', 'Mr Oizo']))
+  await clock.advance(5_000)
+  expect(await shows()).toContain('Pixel-art flat eric')
+
+  // A pick of your own wins, also when kept for the playlist.
+  await ui.press({ key: 'theme-dancefloor' })
+  expect(await shows()).toContain('Pixel-art dance floor')
+  await ui.press({ key: 'remember-playlist' })
+  expect(await shows()).toContain('Pixel-art dance floor')
+  await ui.unmount()
+})
+
 test('without opt-in, no request goes to musicbrainz.org', async ($, on) => {
   const { clock, spotify, ui, shows } = await connectedPane($, on, { current: song('bt', 'Not', ['Big Thief'], 'USUM71900001'), musicbrainz: MUSICBRAINZ })
   await clock.advance(10_000)
@@ -1294,13 +1328,13 @@ test('words in the playlist name and genres choose a family', () => {
 })
 
 test('every scene fits in an Svg and moves only while playing', () => {
-  for (const id of THEME_IDS) for (const isPlaying of [true, false]) expect(scene(id, isPlaying).length).toBeLessThan(131_072)
+  for (const id of SCENES) for (const isPlaying of [true, false]) expect(scene(id, isPlaying).length).toBeLessThan(131_072)
   // Each family draws its own scene, and says what it shows.
-  expect(new Set(THEME_IDS.map(id => scene(id, true))).size).toBe(THEME_IDS.length)
-  for (const id of THEME_IDS) expect(THEMES[id].alt.startsWith(`Pixel-art ${THEMES[id].name.toLowerCase()}: `)).toBe(true)
-  // Paused, only the stars twinkle: two groups of them by the campfire, over the desert and over the lake; none in town or in the club.
+  expect(new Set(SCENES.map(id => scene(id, true))).size).toBe(SCENES.length)
+  for (const id of SCENES) expect(THEMES[id].alt.startsWith(`Pixel-art ${THEMES[id].name.toLowerCase()}: `)).toBe(true)
+  // Paused, only the stars twinkle: two groups of them by the campfire, over the desert and over the lake; none in town, in the club or with Flat Eric.
   for (const id of ['campfire', 'psychedelic', 'dreampop'] as const) expect(scene(id, false).match(/<animate/g)).toHaveLength(2)
-  for (const id of ['citylights', 'dancefloor'] as const) expect(scene(id, false)).not.toContain('<animate')
+  for (const id of ['citylights', 'dancefloor', 'flateric'] as const) expect(scene(id, false)).not.toContain('<animate')
   // Playing, the snow and the rain fall, the ball's specks and the aurora drift, and the desert's colours flow.
   for (const id of ['campfire', 'citylights', 'dancefloor', 'dreampop'] as const) expect(scene(id, true)).toContain('<animateTransform')
   expect(scene('psychedelic', true)).toContain('<animate attributeName="fill"')
