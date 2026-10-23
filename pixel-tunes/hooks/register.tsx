@@ -194,7 +194,6 @@ let pollTimer: Timer | undefined
 let sceneTimer: Timer | undefined
 let sceneShown: { theme: ThemeId; isImage: boolean; columns: number } | null = null
 const SCENE_FRAME_MS = 200
-let pollFailed = false
 // The last cover asked for, and what came of it (for `/tunes debug`).
 let artworkTried = ''
 let artworkNote = 'not tried yet'
@@ -264,6 +263,12 @@ async function say($: EngineInterface, text: string | null): Promise<void> {
   if ((await read($, notice)) !== text) await update($, notice, () => text)
 }
 
+// How a failed look at Spotify starts its notice. A look that goes through takes
+// back that notice and no other, told by the state, not by this module: so also
+// after a reload of the hooks, and when a look that failed crosses one that did not.
+const UNREACHABLE = 'Spotify cannot be reached: '
+const isUnreachable = (text: string | null) => text?.startsWith(UNREACHABLE) === true
+
 /** Seconds on the terminal scene's clock: the same for every frame and every drawing. */
 const sceneSeconds = (now: number) => (now % 3_600_000) / 1000
 
@@ -310,10 +315,7 @@ async function poll($: EngineInterface): Promise<void> {
     // Same track, but its cover never arrived (a reload, a failed download): try once more.
     else if (next.track?.imageUrl && next.track.imageUrl !== artworkTried && (await read($, artwork))?.url !== next.track.imageUrl)
       quietly(fetchArtwork($, next.track))
-    if (pollFailed) {
-      pollFailed = false
-      await say($, null)
-    }
+    if (isUnreachable(await read($, notice))) await update($, notice, n => (isUnreachable(n) ? null : n))
     // Pixel Tunes runs in every session: with the pane closed, look once a minute
     // (and as the track ends, so the spinner names the next one).
     const pane = (await $.ui.panes()).find(x => x.id === PANE)
@@ -327,9 +329,8 @@ async function poll($: EngineInterface): Promise<void> {
     if (pane && !pane.isFocused && next.isPlaying && now - progressDrawnAt >= 4_000) $.ui.invalidate('ui.render')
   } catch (error) {
     if (error instanceof SpotifyError && error.reason === 'invalid_grant') return signedOut($, 'Your Spotify access was revoked. Connect again.')
-    pollFailed = true
     wait = error instanceof SpotifyError && error.status === 429 ? 30_000 : 20_000
-    await say($, `Spotify cannot be reached: ${error instanceof Error ? error.message : 'unknown error'}`)
+    await say($, `${UNREACHABLE}${error instanceof Error ? error.message : 'unknown error'}`)
   }
   schedulePoll($, wait)
 }

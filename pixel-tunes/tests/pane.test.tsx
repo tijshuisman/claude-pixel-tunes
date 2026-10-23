@@ -763,6 +763,39 @@ test('a revoked token asks to connect again, but leaves the Keychain alone', asy
   await ui.unmount()
 })
 
+test('once Spotify answers again, its notice goes, also one from before a reload', async ($, on) => {
+  // A reload keeps the state, so the notice of a failed look, but not what the hooks knew
+  // of that look. The kit has neither a reload nor `$.state`: until the plugin writes the
+  // notice, the state answers the one put here.
+  let left: string | null = null
+  const isNotice = (e: { plugin: string; key: string }) => e.plugin === 'pixel-tunes' && e.key === 'notice'
+  on('state.get', async (_, e, next) => {
+    const held = await next(e)
+    return isNotice(e) && left !== null && 'value' in held ? { value: { ...held.value, value: left } } : held
+  })
+  on('state.set', (_, e, next) => {
+    if (isNotice(e)) left = null
+    return next(e)
+  })
+  const { clock, ui } = await connectedPane($, on)
+  const drawn = () => $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.unmount()
+
+  left = 'Spotify cannot be reached: Spotify asks for a break; back in a moment.'
+  const after = await drawn()
+  expect(await after.find({ type: 'Text', text: /cannot be reached/ })).toBeDefined()
+  await clock.advance(10_000)
+  expect(await after.find({ type: 'Text', text: /cannot be reached/ })).toBeUndefined()
+  await after.unmount()
+
+  // A notice for something else stays.
+  left = 'This needs Spotify Premium.'
+  const other = await drawn()
+  await clock.advance(10_000)
+  expect(await other.find({ type: 'Text', text: 'This needs Spotify Premium.' })).toBeDefined()
+  await other.unmount()
+})
+
 test('Claude puts music on with play_music, and the model only hears that it worked', async ($, on) => {
   spinnerLine(on)
   const { clock, spotify, ui, played, tools } = await connectedPane($, on, { isPlaying: false })
