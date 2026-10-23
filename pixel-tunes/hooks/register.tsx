@@ -25,20 +25,21 @@ import {
   lastBreak,
   listen,
   logout,
+  look,
+  lookCounts,
   myPlaylists,
   openOnMac,
   originOf,
-  playbackState,
   playlistName,
   profile,
   recentlyPlayed,
   resume,
   search,
   setSaved,
-  toPlayback,
   transfer,
   upcoming,
 } from './spotify'
+import type { Look } from './spotify'
 import { sceneCells, sceneImage } from './raster'
 import { THEMES, THEME_IDS } from './themes'
 
@@ -150,7 +151,8 @@ function changed(a: Playback, b: Playback, now: number): boolean {
     a.context !== b.context
   )
     return true
-  return Math.abs(positionAt(a, now) - b.positionMs) > 2_500
+  // Both where they are now: a look another session took may be a few seconds old.
+  return Math.abs(positionAt(a, now) - positionAt(b, now)) > 2_500
 }
 
 /** The page of a track on open.spotify.com, from its `spotify:<type>:<id>` URI. */
@@ -299,34 +301,43 @@ async function sceneFrame($: EngineInterface): Promise<void> {
   sceneTimer = $.clock.after(SCENE_FRAME_MS, () => quietly(sceneFrame($)))
 }
 
-function schedulePoll($: EngineInterface, ms: number): void {
+/** Plans the next look; a `fresh` one takes no look older than now. */
+function schedulePoll($: EngineInterface, ms: number, fresh = false): void {
   pollTimer?.cancel()
-  pollTimer = $.clock.after(Math.max(250, ms), () => quietly(poll($)))
+  pollTimer = $.clock.after(Math.max(250, ms), () => quietly(poll($, fresh)))
 }
 
-/** Reads Spotify's playback, redraws only on a real change, and plans the next look. */
-async function poll($: EngineInterface): Promise<void> {
+// Sessions that wait for the same moment, such as the end of a track, each wait a
+// little longer: the first asks Spotify, and the others take its look.
+const SPREAD_MS = 1_000
+
+/** Reads what plays, from another session's look while fresh enough, redraws only on a real change, and plans the next look. */
+async function poll($: EngineInterface, fresh = false): Promise<void> {
   if (!(await isConnected($))) return
   let wait = 20_000
   try {
     const now = await $.clock.now()
     const before = await read($, playback)
-    const next = toPlayback(await playbackState($), now, before)
-    if (changed(before, next, now)) await update($, playback, () => next)
-    // Music plays again by another way: what was asked for earlier is not wanted any more.
-    if (next.isPlaying) pendingPlay = null
-    if (next.track?.id !== before.track?.id || next.context !== before.context) quietly(pickTheme($))
-    if (next.track?.id !== before.track?.id || (await read($, queue)).some(t => t.id.startsWith('demo-'))) quietly(details($, next))
-    // Same track, but its cover never arrived (a reload, a failed download): try once more.
-    else if (next.track?.imageUrl && next.track.imageUrl !== artworkTried && (await read($, artwork))?.url !== next.track.imageUrl)
-      quietly(fetchArtwork($, next.track))
-    if (isUnreachable(await read($, notice))) await update($, notice, n => (isUnreachable(n) ? null : n))
     // Pixel Tunes runs in every session: with the pane closed, look once a minute
     // (and as the track ends, so the spinner names the next one).
     const pane = (await $.ui.panes()).find(x => x.id === PANE)
     const isOpen = pane !== undefined
-    if (next.track && next.isPlaying) wait = Math.min(isOpen ? 5_000 : 60_000, next.track.durationMs - next.positionMs + 1_000)
+    const seen = await look($, fresh ? 0 : isOpen ? 5_000 : 60_000, before)
+    // Another session asks Spotify right now: take its look in a moment.
+    if (!seen) return schedulePoll($, 1_000)
+    const next = seen.playback
+    if (changed(before, next, now)) await update($, playback, () => next)
+    // Music plays again by another way: what was asked for earlier is not wanted any more.
+    if (next.isPlaying) pendingPlay = null
+    if (next.track?.id !== before.track?.id || next.context !== before.context) quietly(pickTheme($))
+    if (next.track?.id !== before.track?.id || (await read($, queue)).some(t => t.id.startsWith('demo-'))) quietly(details($, seen))
+    // Same track, but its cover never arrived (a reload, a failed download): try once more.
+    else if (next.track?.imageUrl && next.track.imageUrl !== artworkTried && (await read($, artwork))?.url !== next.track.imageUrl)
+      quietly(fetchArtwork($, next.track))
+    if (isUnreachable(await read($, notice))) await update($, notice, n => (isUnreachable(n) ? null : n))
+    if (next.track && next.isPlaying) wait = Math.min(isOpen ? 5_000 : 60_000, next.track.durationMs - positionAt(next, now) + 1_000)
     else wait = isOpen ? 10_000 : 60_000
+    wait += Math.random() * SPREAD_MS
     // The progress counts on from when its frame loads, and the desktop may load that
     // frame again from the last drawing (after another session was in view): while
     // music plays, each look draws it anew, unless something just did or the person
@@ -353,15 +364,15 @@ async function fetchArtwork($: EngineInterface, t: Track): Promise<void> {
   if (dataUri) await update($, artwork, () => ({ url, dataUri }))
 }
 
-/** On a new track: its artwork, the queue and whether it is saved. */
-async function details($: EngineInterface, p: Playback): Promise<void> {
-  const t = p.track
+/** On a new track: its artwork, the queue and whether it is saved, the last two from the look when it has them. */
+async function details($: EngineInterface, seen: Look): Promise<void> {
+  const t = seen.playback.track
   try {
     if (t?.imageUrl && (await read($, artwork))?.url !== t.imageUrl) await fetchArtwork($, t)
-    const list = await upcoming($)
+    const list = seen.upcoming ?? (await upcoming($))
     await update($, queue, () => list)
     if (t?.uri) {
-      const saved = await isSaved($, t.uri)
+      const saved = seen.saved ?? (await isSaved($, t.uri))
       await update($, liked, ids => (saved ? (ids.includes(t.id) ? ids : [...ids.slice(-199), t.id]) : ids.filter(id => id !== t.id)))
     }
   } catch {
@@ -818,6 +829,9 @@ async function disconnect($: EngineInterface): Promise<void> {
 // and otherwise until the break is over. While the break lasts, a try with a login
 // sends nothing: `api` refuses it before it goes out.
 const BREAK_RETRY_MS = 30_000
+// Every session waits out the same break: each tries again a little later than the
+// others, so the first asks Spotify and the rest take its look, not all in one second.
+const BREAK_SPREAD_MS = 20_000
 
 // How the notice of a break ends: the pane then waits it out, with no Connect Spotify.
 const WAITS_OUT_BREAK = 'Pixel Tunes connects once it is over.'
@@ -834,7 +848,7 @@ async function waitOutBreak($: EngineInterface, error: SpotifyError): Promise<vo
   await say($, `${error.message} ${WAITS_OUT_BREAK}`)
   const left = (lastBreak()?.until ?? 0) - (await $.clock.now())
   bootTimer?.cancel()
-  bootTimer = $.clock.after(Math.max(BREAK_RETRY_MS, left + 1_000), () => quietly(boot($, true)))
+  bootTimer = $.clock.after(Math.max(BREAK_RETRY_MS, left + 1_000) + Math.random() * BREAK_SPREAD_MS, () => quietly(boot($, true)))
 }
 
 /**
@@ -919,7 +933,7 @@ async function openPane($: EngineInterface): Promise<UiOpenResult> {
   // The band's button is there only while the pane is closed.
   $.ui.invalidate('ui.render')
   // Closed, the pane looked once a minute: look now, and every few seconds from here.
-  if (await isConnected($)) schedulePoll($, 0)
+  if (await isConnected($)) schedulePoll($, 0, true)
   return opened
 }
 
@@ -1015,11 +1029,13 @@ export const register: Register = (on, options) => {
         : pause.until > now
           ? `until ${clockTime(pause.until, now)} (Spotify asked for ${pause.asked} s)`
           : `none now (the last, of ${pause.asked} s, is over)`
+      const looks = lookCounts()
       // The model reads this too: no title, artist or image address, only which server.
       return {
         text: [
           `Spotify: ${acct.status}`,
           `Break: ${breakLine}`,
+          `Looks at what plays: ${looks.asked} asked of Spotify, ${looks.taken} taken from another session`,
           `Track: ${!track ? 'none' : track.uri ? 'from Spotify (title and artist are in the pane)' : 'demo'}`,
           `Cover server: ${originOf(track?.imageUrl)}`,
           `Fetching: ${artworkNote}`,

@@ -114,9 +114,11 @@ The new version loads in your next session, in the terminal and in the desktop a
 | `/tunes play`, `/tunes pause` | Play or pause |
 | `/tunes next`, `/tunes prev` | Next or previous track |
 | `/tunes login`, `/tunes logout` | Log in to Spotify, or log out |
-| `/tunes debug` | Troubleshoot the album art and the genre lookup |
+| `/tunes debug` | Troubleshoot the album art, the requests to Spotify and the genre lookup |
 
 In the desktop app, you can also open the pane with the **♪ Pixel Tunes** button above the prompt.
+
+Pixel Tunes runs in every session, but your sessions share what Spotify tells them. One session asks, and the others use its answer, so many open sessions don't add up to many requests. When Spotify asks for a break, every session waits.
 
 ## Options
 
@@ -133,6 +135,7 @@ You set them when you install. To change them later, run `/config` in a terminal
 
 - Your Spotify login stays on your Mac, in the Keychain. `/tunes logout` removes it.
 - Your remembered scenes stay on your Mac too.
+- What plays now is kept on your Mac, so your sessions can share it. `/tunes logout` removes it.
 - Claude never sees titles, artists or album art. When it plays something for you, it only hears whether playback started.
 - With `genre_lookup` on, Pixel Tunes sends the playing artist's Spotify ID to [musicbrainz.org](https://musicbrainz.org), or the track's ISRC code if MusicBrainz doesn't know that ID. Otherwise it only talks to Spotify.
 

@@ -53,15 +53,34 @@ function engine(
   {
     takesTools = true,
     store = {},
+    shared,
     isFocused = () => false,
     isOpen = true,
-  }: { takesTools?: boolean; store?: Record<string, unknown>; isFocused?: () => boolean; isOpen?: boolean } = {},
+  }: {
+    takesTools?: boolean
+    store?: Record<string, unknown>
+    /** The store as every session on the Mac reads it: what the test puts there, another session wrote. */
+    shared?: Map<string, unknown>
+    isFocused?: () => boolean
+    isOpen?: boolean
+  } = {},
 ) {
   const tools: RegisteredToolSpec[] = []
   const opened: string[] = []
   // The panes up now: the player's, unless the test starts with it closed.
   const up = new Set<string>(isOpen ? ['pixel-tunes'] : [])
-  mock.store(on, store)
+  if (shared) {
+    on('store.get', (_, e) => ({ value: shared.get(e.key) }))
+    on('store.set', (_, e) => {
+      shared.set(e.key, e.value)
+      return { value: undefined }
+    })
+    on('store.delete', (_, e) => {
+      shared.delete(e.key)
+      return { value: undefined }
+    })
+    on('store.keys', () => ({ value: [...shared.keys()] }))
+  } else mock.store(on, store)
   on('command.register', () => ({ value: { command: 'tunes' } }))
   on('tool.register', (_, e) => {
     if (!takesTools) return { deny: 'this session takes no tools from plugins' }
@@ -853,7 +872,8 @@ test('when Spotify asks for a break as the session starts, Pixel Tunes keeps the
   await clock.advance(30_000)
   expect(await waitsOutBreak(ui)).toBe(true)
   spotify.trouble()
-  await clock.advance(30_000)
+  // The next try comes up to 20 s after the break: sessions spread their tries.
+  await clock.advance(51_000)
   expect(await waitsOutBreak(ui)).toBe(false)
   expect(String((await art(ui))[2]?.props.alt)).toBe('Now playing Nightcall by Kavinsky')
   expect(spotify.refreshedWith()).toEqual(['refresh-1'])
@@ -872,7 +892,7 @@ test('a break as the hooks load again takes the place of the error of an earlier
   expect(await waitsOutBreak(ui)).toBe(true)
 
   spotify.trouble()
-  await clock.advance(30_000)
+  await clock.advance(51_000)
   expect(String((await art(ui))[2]?.props.alt)).toBe('Now playing Nightcall by Kavinsky')
   await ui.unmount()
 })
@@ -922,11 +942,99 @@ test('a break right after the login keeps that login and waits the break out', C
   expect((await $.command.run({ command: 'tunes', args: 'debug' })).text).toContain('Spotify: demo')
 
   spotify.trouble()
-  await clock.advance(30_000)
+  await clock.advance(51_000)
   expect(String((await art(ui))[2]?.props.alt)).toBe('Now playing Nightcall by Kavinsky')
   // With the token of that login: its own request for it (no refresh token), and no refresh.
   expect(spotify.refreshedWith()).toEqual([null])
   await ui.unmount()
+})
+
+test('a break Spotify asked of another session holds in this one too: it asks Spotify nothing until the break is over', async ($, on) => {
+  const until = 1_000_000 + 3_600_000
+  const { clock, spotify, ui } = await connectedPane($, on, {}, { 'spotify-break': { until, asked: 3600 } })
+  expect(webApi(spotify)).toBe(0)
+  expect(await waitsOutBreak(ui)).toBe(true)
+  expect((await $.command.run({ command: 'tunes', args: 'debug' })).text).toContain(`Break: until ${clockTime(until, 1_000_000)} (Spotify asked for 3600 s)`)
+
+  await clock.advance(30 * 60_000)
+  expect(webApi(spotify)).toBe(0)
+  await clock.advance(30 * 60_000 + 25_000)
+  expect(await waitsOutBreak(ui)).toBe(false)
+  expect(String((await art(ui))[2]?.props.alt)).toBe('Now playing Nightcall by Kavinsky')
+  await ui.unmount()
+})
+
+/** The look at what plays as another session leaves it in the store: `title` by `artist`, 10 s in at `at`. */
+const lookOfOtherSession = (at: number, title = 'Tech Noir', artist = 'Gunship') => {
+  const playing = { id: 'other', uri: 'spotify:track:other', title, artist, album: 'Dark All Day', durationMs: 258_000, imageUrl: IMAGE, artists: [artist], artistIds: [''] }
+  return {
+    look: {
+      playback: { track: playing, isPlaying: true, positionMs: 10_000, at, shuffle: false, repeat: 'off', volume: 70, device: 'MacBook Pro', context: 'spotify:playlist:37i9dQZF1DX6GJXiuZRisr' },
+      upcoming: [playing, { id: 'next', uri: 'spotify:track:next', title: 'Resonance', artist: 'Home', album: 'Odyssey', durationMs: 212_000 }],
+      saved: false,
+    },
+    claimedAt: null,
+  }
+}
+
+/**
+ * A closed pane's session, connected, that looked at Spotify once, at 1,000,250. `shared` is
+ * the store as every session on the Mac reads it: what a test puts there, another session wrote.
+ */
+async function closedPane($: Parameters<Parameters<typeof test>[1]>[0], on: On) {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  const shared = new Map<string, unknown>()
+  engine(on, { isOpen: false, shared })
+  const spotify = fakeSpotify(on, { keychain: 'refresh-1' })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(300)
+  /** The looks this session asked Spotify for. */
+  const looks = () => spotify.calls.filter(c => c.url.includes('/v1/me/player?')).length
+  return { clock, spotify, looks, shared }
+}
+
+test('a fresh look another session took serves this one too, so one session asks Spotify for all of them', async ($, on) => {
+  const { clock, spotify, looks, shared } = await closedPane($, on)
+  expect(looks()).toBe(1)
+  const asked = webApi(spotify)
+
+  // Half a minute on, another session looked: Tech Noir plays now. This session's next look
+  // (a minute after its last) takes that one, the queue and the heart with it.
+  await clock.advance(30_000)
+  shared.set('spotify-look', lookOfOtherSession(clock.now()))
+  await clock.advance(31_000)
+  expect(webApi(spotify)).toBe(asked)
+  expect((await $.command.run({ command: 'tunes', args: 'debug' })).text).toContain('Looks at what plays: 1 asked of Spotify, 1 taken from another session')
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(String((await art(ui))[2]?.props.alt)).toBe('Now playing Tech Noir by Gunship')
+  expect(await ui.find({ type: 'Button', text: /Resonance/ })).toBeDefined()
+  await ui.unmount()
+
+  // A look a minute old is too old: this session asks Spotify itself, and leaves its look for the others.
+  await clock.advance(62_000)
+  expect(looks()).toBe(2)
+  const kept = shared.get('spotify-look') as ReturnType<typeof lookOfOtherSession>
+  expect(kept.look.playback.track.title).toBe('Nightcall')
+})
+
+test('while another session asks Spotify, this one waits for its look instead of asking too', async ($, on) => {
+  const { clock, spotify, looks, shared } = await closedPane($, on)
+  const asked = webApi(spotify)
+
+  // Just before this session's next look, another one starts to ask Spotify.
+  await clock.advance(59_700)
+  const stale = lookOfOtherSession(0)
+  shared.set('spotify-look', { ...stale, claimedAt: clock.now() })
+  await clock.advance(1_600)
+  expect(webApi(spotify)).toBe(asked)
+
+  // Its answer comes: this session takes it.
+  shared.set('spotify-look', lookOfOtherSession(clock.now()))
+  await clock.advance(2_000)
+  expect(looks()).toBe(1)
+  expect(webApi(spotify)).toBe(asked)
+  expect((await $.command.run({ command: 'tunes', args: 'debug' })).text).toContain('1 taken from another session')
 })
 
 test('the end of a break reads as a clock does, to the minute after', () => {

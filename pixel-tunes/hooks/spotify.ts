@@ -63,6 +63,13 @@ let breakAsked = 0
 // Spotify may ask for a break of hours: as long as it asks, up to a day.
 const MAX_BREAK_S = 86_400
 
+// Pixel Tunes runs in every session, and Spotify counts the requests of them all.
+// So $.store, one file for every session on this Mac, holds the break Spotify asked
+// for, which then holds in each session, and the last look at what plays, which
+// one session takes for all of them.
+const BREAK = 'spotify-break'
+const LOOK = 'spotify-look'
+
 export const isSignedIn = () => tokens !== undefined
 
 /** Until when Spotify asked for a break, and for how many seconds; null when it never did. */
@@ -82,6 +89,19 @@ function parse(text: string): unknown {
     return JSON.parse(text) as unknown
   } catch {
     return null
+  }
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/** Takes on the break another session was asked for, when it lasts longer than this one's. */
+async function adoptBreak($: EngineInterface): Promise<void> {
+  const kept = await $.store.get(BREAK).catch(() => undefined)
+  const until = isRecord(kept) ? kept['until'] : undefined
+  const asked = isRecord(kept) ? kept['asked'] : undefined
+  if (typeof until === 'number' && typeof asked === 'number' && until > blockedUntil) {
+    blockedUntil = until
+    breakAsked = asked
   }
 }
 
@@ -274,6 +294,8 @@ export async function resume($: EngineInterface): Promise<boolean> {
 export async function logout($: EngineInterface): Promise<void> {
   forget()
   await keychainDelete($)
+  // What played stays in no file once you log out.
+  await $.store.delete(LOOK).catch(() => undefined)
 }
 
 /** Drops this session's tokens but leaves the Keychain: another session may hold a newer one. */
@@ -285,6 +307,7 @@ export function forget(): void {
 /* ── the Web API ──────────────────────────────────────────────────────── */
 
 async function api($: EngineInterface, method: string, path: string, body?: unknown): Promise<unknown> {
+  await adoptBreak($)
   const now = await $.clock.now()
   const onBreak = () => new SpotifyError(429, `Spotify asks for a break until ${clockTime(blockedUntil, now)}.`)
   if (now < blockedUntil) throw onBreak()
@@ -305,7 +328,9 @@ async function api($: EngineInterface, method: string, path: string, body?: unkn
   if (res.status === 429) {
     const wait = Number(res.headers['retry-after'] ?? '10')
     breakAsked = Number.isFinite(wait) && wait > 0 ? wait : 10
-    blockedUntil = now + Math.min(breakAsked, MAX_BREAK_S) * 1000
+    // From Spotify's answer on, not from the question: the request took a while too.
+    blockedUntil = (await $.clock.now()) + Math.min(breakAsked, MAX_BREAK_S) * 1000
+    await $.store.set(BREAK, { until: blockedUntil, asked: breakAsked }).catch(() => undefined)
     throw onBreak()
   }
   if (!res.ok) {
@@ -313,6 +338,8 @@ async function api($: EngineInterface, method: string, path: string, body?: unkn
     const error = typeof json?.error === 'object' ? json.error : undefined
     throw new SpotifyError(res.status, error?.message ?? `Spotify answered ${res.status}`, error?.reason)
   }
+  // The player changed: the next look, in any session, asks Spotify again.
+  if (method !== 'GET' && path.startsWith('/me/player')) await staleLook($)
   return res.text ? parse(res.text) : null
 }
 
@@ -465,7 +492,7 @@ export async function enqueue($: EngineInterface, uri: string): Promise<void> {
   await api($, 'POST', `/me/player/queue?uri=${encodeURIComponent(uri)}`)
 }
 
-export async function playbackState($: EngineInterface): Promise<RawPlayback | null> {
+async function playbackState($: EngineInterface): Promise<RawPlayback | null> {
   return (await api($, 'GET', '/me/player?additional_types=episode')) as RawPlayback | null
 }
 
@@ -476,6 +503,79 @@ export async function upcoming($: EngineInterface): Promise<Track[]> {
     .filter((item): item is RawItem => typeof item?.id === 'string')
     .slice(0, 5)
     .map(toTrack)
+}
+
+/* ── one look at what plays, for every session ────────────────────────── */
+
+/** What plays, as a session last asked Spotify; for a track, with the next four and whether it is saved. */
+export type Look = { playback: Playback; upcoming?: Track[]; saved?: boolean }
+
+// How long a session waits for another one's question to Spotify before it asks itself.
+const CLAIM_MS = 3_000
+
+/** The look in the store, and since when a session asks Spotify for the next one. */
+function sharedLook(value: unknown): { look: Look | null; claimedAt: number | null } {
+  const look = isRecord(value) ? value['look'] : undefined
+  const playback = isRecord(look) ? look['playback'] : undefined
+  const claimedAt = isRecord(value) ? value['claimedAt'] : undefined
+  return {
+    look: isRecord(playback) && typeof playback['at'] === 'number' ? (look as Look) : null,
+    claimedAt: typeof claimedAt === 'number' ? claimedAt : null,
+  }
+}
+
+/** Whether a look still tells what plays: younger than `maxAge`, and its track not over yet. */
+function isFresh(p: Playback, now: number, maxAge: number): boolean {
+  if (now - p.at >= maxAge) return false
+  return !(p.isPlaying && p.track && p.positionMs + (now - p.at) >= p.track.durationMs)
+}
+
+// For `/tunes debug`: the looks this session asked Spotify for, and those it took from another session.
+let looksAsked = 0
+let looksTaken = 0
+let ownLookAt = -1
+
+export const lookCounts = () => ({ asked: looksAsked, taken: looksTaken })
+
+/**
+ * What plays, no older than `maxAge`: another session's look while it is that
+ * fresh; else this session asks Spotify and leaves its look for the others, for
+ * a new track with the next four and whether it is saved. Null while another
+ * session asks: its look is there in a moment.
+ */
+export async function look($: EngineInterface, maxAge: number, before: Playback): Promise<Look | null> {
+  const now = await $.clock.now()
+  const { look: kept, claimedAt } = sharedLook(await $.store.get(LOOK).catch(() => undefined))
+  if (kept && isFresh(kept.playback, now, maxAge)) {
+    if (kept.playback.at !== ownLookAt) looksTaken += 1
+    return kept
+  }
+  if (claimedAt !== null && now - claimedAt < CLAIM_MS) return null
+  await $.store.set(LOOK, { look: kept, claimedAt: now }).catch(() => undefined)
+  const playback = toPlayback(await playbackState($), now, before)
+  const track = playback.track
+  let more: Omit<Look, 'playback'> = {}
+  if (track && kept?.playback.track?.id === track.id && kept.upcoming)
+    more = { upcoming: kept.upcoming, ...(kept.saved === undefined ? {} : { saved: kept.saved }) }
+  else if (track) {
+    try {
+      const list = await upcoming($)
+      more = { upcoming: list, ...(track.uri ? { saved: await isSaved($, track.uri) } : {}) }
+    } catch {
+      // Without them, each session asks for its own.
+    }
+  }
+  const fresh: Look = { playback, ...more }
+  looksAsked += 1
+  ownLookAt = playback.at
+  await $.store.set(LOOK, { look: fresh, claimedAt: null }).catch(() => undefined)
+  return fresh
+}
+
+/** After a request that changed the player: the next look, in any session, asks Spotify again. */
+async function staleLook($: EngineInterface): Promise<void> {
+  const { look: kept } = sharedLook(await $.store.get(LOOK).catch(() => undefined))
+  if (kept) await $.store.set(LOOK, { look: { ...kept, playback: { ...kept.playback, at: 0 } }, claimedAt: null }).catch(() => undefined)
 }
 
 export async function devices($: EngineInterface): Promise<Device[]> {
@@ -503,6 +603,9 @@ export async function isSaved($: EngineInterface, uri: string): Promise<boolean>
 
 export async function setSaved($: EngineInterface, uri: string, saved: boolean): Promise<void> {
   await api($, saved ? 'PUT' : 'DELETE', `/me/library?uris=${encodeURIComponent(uri)}`)
+  // The look the sessions share says so too.
+  const { look: kept, claimedAt } = sharedLook(await $.store.get(LOOK).catch(() => undefined))
+  if (kept?.playback.track?.uri === uri) await $.store.set(LOOK, { look: { ...kept, saved }, claimedAt }).catch(() => undefined)
 }
 
 /** `device` names a Spotify Connect device to play on; left out, the active one plays. */
