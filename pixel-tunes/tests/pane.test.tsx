@@ -1387,6 +1387,23 @@ test('without an ISRC, MusicBrainz finds the artist by its Spotify page', { opti
   await ui.unmount()
 })
 
+test('while MusicBrainz is asked about a new artist, the scene that was there stays', { options: { genre_lookup: true } }, async ($, on) => {
+  const { clock, spotify, ui, shows } = await connectedPane($, on, { current: song('rh', 'Reckoner', ['Radiohead']), musicbrainz: MUSICBRAINZ })
+  await ui.press({ key: 'theme' })
+  await ui.press({ key: 'theme-citylights' })
+  await ui.press({ key: 'remember-artist' })
+  expect(await shows()).toContain('Pixel-art city lights')
+
+  // The first question went out, the second waits its turn: no night drive in between.
+  spotify.play(song('bt', 'Not', ['Big Thief'], 'USUM71900001'))
+  await clock.advance(6_000)
+  expect(spotify.musicbrainz()).toHaveLength(1)
+  expect(await shows()).toContain('Pixel-art city lights')
+  await clock.advance(1_200)
+  expect(await shows()).toContain('Pixel-art campfire')
+  await ui.unmount()
+})
+
 test('a recording MusicBrainz does not know leaves its artist open for the next track', { options: { genre_lookup: true } }, async ($, on) => {
   const { clock, spotify, ui, shows } = await connectedPane($, on, { current: song('bt0', 'Masterpiece', ['Big Thief'], 'USUM71600009'), musicbrainz: MUSICBRAINZ })
   const debug = async () => (await $.command.run({ command: 'tunes', args: 'debug' })).text ?? ''

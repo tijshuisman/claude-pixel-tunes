@@ -216,6 +216,10 @@ let terminalImages = false
 const playlistNames = new Map<string, string | null>()
 // The tracks whose artist MusicBrainz was asked about this session; one that failed is taken out, to be asked again.
 const askedTracks = new Set<string>()
+// The tracks whose lookup runs now: until it answers, the scene that was there stays.
+const lookingUp = new Set<string>()
+// How long the old scene waits for MusicBrainz at most before the night drive takes over.
+const LOOKUP_WAIT_MS = 8_000
 // What the last genre lookup came to (for `/tunes debug`), never naming the track or its artist.
 let genreNote = 'nothing looked up yet this session'
 
@@ -464,38 +468,50 @@ async function nameOfPlaylist($: EngineInterface, context: string | undefined): 
   }
 }
 
-/** Chooses the scene for what plays now. With the opt-in, an unknown artist is looked up, then chosen again. */
-async function pickTheme($: EngineInterface): Promise<void> {
+/**
+ * Chooses the scene for what plays now. With the opt-in, an unknown artist is
+ * looked up first, the scene that was there staying meanwhile; `settled` once
+ * the lookup answered (or took too long), so no rule is left to wait for.
+ */
+async function pickTheme($: EngineInterface, settled = false): Promise<void> {
   try {
     const p = await read($, playback)
     const choice = await themeFor($, p.track, p.context, await nameOfPlaylist($, p.context), genreLookup)
     const now = await read($, playback)
     // Another track came meanwhile: its own pick follows.
     if (now.track?.id !== p.track?.id || now.context !== p.context) return
+    // MusicBrainz may know the artist yet: no night drive in between, the lookup chooses again.
+    if (genreLookup && choice.reason === 'default' && p.track && !settled) return quietly(lookUpThenPick($, p.track))
     const before = await read($, theme)
     if (before.auto !== choice.auto || before.reason !== choice.reason || before.basis !== choice.basis)
       await update($, theme, t => ({ ...t, ...choice }))
-    if (genreLookup && choice.reason === 'default' && p.track) quietly(lookUpThenPick($, p.track))
   } catch {
     // The scene stays as it is; the next track chooses again.
   }
 }
 
-/** Asks MusicBrainz about the track's artist, once a track; when its genres fit a family, chooses again. */
+/** Asks MusicBrainz about the track's artist, once a track; then chooses again, whatever it said. */
 async function lookUpThenPick($: EngineInterface, track: Track): Promise<void> {
-  if (askedTracks.has(track.id)) return
-  askedTracks.add(track.id)
-  let found: Lookup
-  try {
-    found = await lookUpGenre($, track)
-  } catch (error) {
-    // Not given up on: the artist's next track asks again.
-    askedTracks.delete(track.id)
-    genreNote = `last lookup failed: ${error instanceof Error ? error.message : 'unknown error'}; the artist's next track asks again`
-    return
+  // A lookup for this track runs already: it chooses when it answers.
+  if (lookingUp.has(track.id)) return
+  const stillPlays = async () => (await read($, playback)).track?.id === track.id
+  if (!askedTracks.has(track.id)) {
+    askedTracks.add(track.id)
+    lookingUp.add(track.id)
+    // MusicBrainz is slow or busy: the night drive after all, and the answer may still change it.
+    const wait = $.clock.after(LOOKUP_WAIT_MS, () => quietly((async () => (await stillPlays()) && pickTheme($, true))()))
+    try {
+      genreNote = `last lookup: ${lookupNote(await lookUpGenre($, track))}`
+    } catch (error) {
+      // Not given up on: the artist's next track asks again.
+      askedTracks.delete(track.id)
+      genreNote = `last lookup failed: ${error instanceof Error ? error.message : 'unknown error'}; the artist's next track asks again`
+    } finally {
+      lookingUp.delete(track.id)
+      wait.cancel()
+    }
   }
-  genreNote = `last lookup: ${lookupNote(found)}`
-  if (found.kind === 'found' && found.theme !== null && (await read($, playback)).track?.id === track.id) await pickTheme($)
+  if (await stillPlays()) await pickTheme($, true)
 }
 
 /** What a lookup came to, in words for `/tunes debug`: never the track or its artist. */
