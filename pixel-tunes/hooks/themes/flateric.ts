@@ -132,6 +132,21 @@ function room(): Frame {
 const TUFT = ['.......ll..', '.....lll..l', '..l.lbl.ll.', '...bbbbbb..']
 const EYE = ['.kk.', 'khkk', 'kkkk', '.kk.']
 const NOSE = ['hkkk.', 'kkkkk', '.kkk.']
+// His fist round the sausage: the thumb over the top, three grooves between
+// his fingers running to the knuckles on the right.
+const FIST = [
+  '.eeeeee....',
+  'elllllee...',
+  'lllllllbbe.',
+  'lleeeeeebe.',
+  'lbbbbbbbsse',
+  'bbbbbbbbsse',
+  'bbbbbbbeeee',
+  'bbbbbbbbsse',
+  'bbbbbbbeeee',
+  'bbbbbbbbsse',
+  '.eeeeeeeee.',
+]
 
 /** Eric: his head `nod` pixels down, its tuft `flick` behind, the sausage in his mouth and paw. */
 function eric(f: Frame, nod: number, flick: number): void {
@@ -178,18 +193,11 @@ function eric(f: Frame, nod: number, flick: number): void {
       put(f, x, y, k > 0.78 ? '#5c120a' : depth < 2 ? '#7a1a10' : depth < 4 ? '#c9341f' : '#e2563a')
     }
 
-  // His arm comes up from below; the sausage runs from his mouth past his paw.
-  rod(f, 36, 51 + nod, 14, 66, 4.5, FUR)
-  rod(f, 40, 31 + nod, 28, 63 + nod, 3, SAUSAGE)
-  felt(
-    f,
-    (x, y) => ((x + 0.5 - 35) / 5) ** 2 + ((y + 0.5 - 49 - nod) / 5) ** 2 <= 1,
-    x => (x > 37 ? 1 : 0),
-    nod,
-    FUR,
-  )
-  // His fingers, curled round the sausage.
-  for (const y of [47, 49, 51]) for (const x of [30, 31, 32, 33]) put(f, x, y + nod, FUR.edge)
+  // His arm comes up from the left to the wrist; the sausage runs from his
+  // mouth through his fist, its end showing below it.
+  rod(f, 40, 31 + nod, 30, 57 + nod, 3, SAUSAGE)
+  rod(f, 31, 50 + nod, 8, 58, 4, FUR)
+  sprite(f, FIST, { e: FUR.edge, l: FUR.light, b: FUR.base, s: FUR.shade }, 29, 44 + nod)
 }
 
 /** The speaker on the right: a black dome of mesh, a ring wider when it pumps. */
